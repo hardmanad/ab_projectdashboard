@@ -1,0 +1,35 @@
+/*
+* <license header>
+*/
+
+
+html,
+body {
+  margin: 0;
+}
+
+/* Hide checkboxes in project list */
+.hide-checkbox label[class*="spectrum-Checkbox"] {
+  display: none !important;
+}
+
+.hide-checkbox div[class*="ListViewItem-checkboxWrapper"] {
+  display: none !important;
+}
+
+.hide-checkbox [class*="Checkbox-box"] {
+  display: none !important;
+}
+
+.hide-checkbox input[type="checkbox"][class*="Checkbox-input"] {
+  display: none !important;
+}
+
+/* Show pointer cursor on project list items */
+.hide-checkbox div[role="row"] {
+  cursor: pointer !important;
+}
+
+.hide-checkbox div[class*="ListViewItem"] {
+  cursor: pointer !important;
+}

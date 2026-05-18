@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Build outputs
+dist/
+build/
+.parcel-cache/
+
+# IDE & Editor
+.vscode/
+.idea/
+.cache/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Environment & Config
+.env*
+.aio
+console.json
+config.json
+.manifest-dist.yml
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+.aws.tmp.creds.json
+.wskdebug.props.tmp
+junit.xml
+
+# OS files
+.DS_Store
+
+# Yeoman
+.yo-repository

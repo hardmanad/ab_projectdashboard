@@ -1,0 +1,17 @@
+{
+  "name": "cursorProjDashboard",
+  "id": "cursorprojdashboard",
+  "description": "Cursor built project dashboard",
+  "version": "0.0.1",
+  "mainMenuItems": [
+    {
+      "label": "Project Dashboard",
+      "id": "project-dashboard"
+    }
+  ],
+  "apiVersion": "v20.0",
+  "contextAccess": {
+    "hostname": true,
+    "sessionToken": true
+  }
+}

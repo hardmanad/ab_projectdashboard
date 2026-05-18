@@ -1,0 +1,92 @@
+# Cursor Project Rules for Workfront UIX Extension
+
+## Project Overview
+This is an Adobe App Builder project for Workfront UIX Extensions, specifically a project dashboard extension.
+
+## Technology Stack
+- **Framework**: Adobe App Builder
+- **UI Library**: React 16.13.1, React Spectrum 3.4.0
+- **UIX Integration**: @adobe/uix-guest ^0.10.0
+- **Routing**: React Router DOM v6
+- **Build Tool**: Webpack
+- **Language Support**: JavaScript/TypeScript (configured)
+
+## Important Conventions
+
+### UIX Extension Connection - register vs attach
+
+**Use `register` for Extension Registration:**
+- Used in ExtensionRegistration.js to register menu items, buttons, and extension points
+- Tells Workfront what UI elements to add to the host application
+- Example (ExtensionRegistration.js):
+```javascript
+import { register } from '@adobe/uix-guest';
+const guestConnection = await register({
+  metadata,
+  methods: {
+    id: extensionId,
+    mainMenu: {
+      getItems() {
+        return [{ id: 'my-page', url: '/index.html#/my-page', label: 'My Page' }];
+      }
+    }
+  }
+});
+```
+
+**Use `attach` for UI Pages/Components:**
+- Used in actual page components (like ProjectdashMainMenuItem.js) that need user context
+- Provides access to sharedContext containing hostname and authentication tokens
+- Required for making Workfront API calls
+- Always call `guestConnection.host.renderDone()` after rendering is complete
+- Access hostname via sharedContext and prepend "https://" if protocol is missing
+- Example (in your dashboard component):
+```javascript
+import { attach } from '@adobe/uix-guest';
+const guestConnection = await attach({ id: extensionId });
+const { hostname, sessionToken } = guestConnection.sharedContext;
+const apiHostname = hostname.startsWith('http') ? hostname : `https://${hostname}`;
+// Now use apiHostname and sessionToken for Workfront API calls
+guestConnection.host.renderDone();
+```
+
+### Workfront API
+- **ALWAYS use API version v20.0** when making REST API calls to Workfront
+- API endpoint format: `https://{hostname}/attask/api/v20.0/{resource}`
+- Example: `https://example.my.workfront.com/attask/api/v20.0/project/search`
+- Never use other API versions (v19.0, v21.0, etc.) - stick to v20.0
+
+### File Structure
+- Extension configuration: `src/workfront-ui-1/ext.config.yaml`
+- React components: `src/workfront-ui-1/web-src/src/components/`
+- Main entry: `src/workfront-ui-1/web-src/src/index.js`
+- Routes defined in: `src/workfront-ui-1/web-src/src/components/App.js`
+
+### Development Commands
+- `aio app run` - Local dev server on localhost:9080
+- `aio app dev` - Run with local actions
+- `aio app deploy` - Build and deploy to Adobe Runtime
+- `aio app test` - Run tests
+- `npm run lint` - Lint code
+
+### TypeScript Support
+- Use `.tsx` extension for React components
+- `tsconfig.json` configured with "jsx": "react"
+- TypeScript is configured but project currently uses .js files
+
+### Configuration Files
+- `app.config.yaml` - Main application configuration
+- `ext.config.yaml` - Extension-specific configuration
+- `.env` - Runtime credentials (never commit!)
+
+### Best Practices
+1. Always use ErrorBoundary for component error handling
+2. Route custom pages through React Router in App.js
+3. Run metadata generation before build: `npm run transform:yaml-to-json`
+4. Use React Spectrum components for consistency with Adobe UI
+5. Handle sharedContext updates with 'contextchange' event listeners
+
+## Environment Setup
+- Requires Adobe I/O Runtime credentials in `.env`
+- Generate `.env` using `aio app use`
+- Node.js environment with npm

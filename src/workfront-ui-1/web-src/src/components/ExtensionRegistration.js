@@ -34,7 +34,7 @@ function ExtensionRegistration() {
                 {
                   id: 'project-tab',
                   url: '/index.html#/project-tab',
-                  label: 'AppBuilder Tab',
+                  label: 'Project Details',
                   icon: icon2,
                 },
               ];

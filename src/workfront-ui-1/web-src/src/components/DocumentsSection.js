@@ -9,6 +9,47 @@ import { fetchDocuments } from '../services/workfrontApi';
 import { formatDate } from '../utils/dateFormatter';
 import { buildDocumentUrl } from '../utils/urlBuilder';
 
+const getFileIcon = (extension) => {
+  if (!extension) return <FileTxt size="M" />;
+  const ext = extension.toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) return <Image size="M" />;
+  if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'xml', 'java', 'py', 'rb', 'php'].includes(ext)) return <FileCode size="M" />;
+  if (['csv', 'xls', 'xlsx', 'xml', 'json'].includes(ext)) return <FileData size="M" />;
+  if (['doc', 'docx', 'pdf', 'txt', 'rtf'].includes(ext)) return <FileTxt size="M" />;
+  return <FileTemplate size="M" />;
+};
+
+const DocumentThumbnail = ({ doc, hostname, sessionToken }) => {
+  const [imgStatus, setImgStatus] = useState('loading');
+
+  const canTry = doc.currentVersionID && hostname && sessionToken;
+
+  if (!canTry || imgStatus === 'error') {
+    return getFileIcon(doc.ext);
+  }
+
+  const url = `${hostname}/internal/document/thumbnail?ID=${doc.ID}&documentVersionID=${doc.currentVersionID}&size=ORIGINAL&sessionID=${encodeURIComponent(sessionToken)}`;
+
+  return (
+    <>
+      {imgStatus === 'loading' && getFileIcon(doc.ext)}
+      <img
+        src={url}
+        alt=""
+        onLoad={() => setImgStatus('loaded')}
+        onError={() => setImgStatus('error')}
+        style={{
+          display: imgStatus === 'loaded' ? 'block' : 'none',
+          width: '64px',
+          height: '64px',
+          objectFit: 'cover',
+          borderRadius: '4px'
+        }}
+      />
+    </>
+  );
+};
+
 /**
  * DocumentsSection Component
  * Displays documents attached to a project
@@ -39,35 +80,6 @@ const DocumentsSection = ({ projectId, hostname, sessionToken }) => {
 
     loadDocuments();
   }, [projectId, hostname, sessionToken]);
-
-  const getFileIcon = (extension) => {
-    if (!extension) return <FileTxt size="M" />;
-    
-    const ext = extension.toLowerCase();
-    
-    // Images
-    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) {
-      return <Image size="M" />;
-    }
-    
-    // Code files
-    if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'xml', 'java', 'py', 'rb', 'php'].includes(ext)) {
-      return <FileCode size="M" />;
-    }
-    
-    // Data files
-    if (['csv', 'xls', 'xlsx', 'xml', 'json'].includes(ext)) {
-      return <FileData size="M" />;
-    }
-    
-    // Document files
-    if (['doc', 'docx', 'pdf', 'txt', 'rtf'].includes(ext)) {
-      return <FileTxt size="M" />;
-    }
-    
-    // Default
-    return <FileTemplate size="M" />;
-  };
 
   if (loading) {
     return (
@@ -116,9 +128,9 @@ const DocumentsSection = ({ projectId, hostname, sessionToken }) => {
                 }}
               >
                 <Flex direction="row" gap="size-200" alignItems="center">
-                  {/* File Icon */}
-                  <View UNSAFE_style={{ color: 'var(--spectrum-global-color-gray-600)' }}>
-                    {getFileIcon(doc.ext)}
+                  {/* File Icon / Thumbnail */}
+                  <View UNSAFE_style={{ color: 'var(--spectrum-global-color-gray-600)', flexShrink: 0 }}>
+                    <DocumentThumbnail doc={doc} hostname={hostname} sessionToken={sessionToken} />
                   </View>
                   
                   {/* Document Info */}

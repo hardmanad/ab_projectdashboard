@@ -189,7 +189,7 @@ export async function fetchDocuments(hostname, sessionToken, projectId) {
     docObjCode_Mod: 'eq',
     objID: projectId,
     objID_Mod: 'eq',
-    fields: '*,owner:name,currentVersion:ext'
+    fields: '*,owner:name,currentVersion:ext,currentVersionID'
   };
 
   const response = await makeApiRequest(hostname, sessionToken, 'document/search', params);

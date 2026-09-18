@@ -1,22 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { View, Flex, Heading, Text, ProgressCircle } from '@adobe/react-spectrum';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  View,
+  Flex,
+  Heading,
+  Text,
+  ProgressCircle,
+  TableView,
+  TableHeader,
+  TableBody,
+  Column,
+  Row,
+  Cell
+} from '@adobe/react-spectrum';
 import FileTxt from '@spectrum-icons/workflow/FileTxt';
 import FileCode from '@spectrum-icons/workflow/FileCode';
 import FileData from '@spectrum-icons/workflow/FileData';
 import FileTemplate from '@spectrum-icons/workflow/FileTemplate';
 import Image from '@spectrum-icons/workflow/Image';
 import { fetchDocuments } from '../services/workfrontApi';
-import { formatDate } from '../utils/dateFormatter';
+import { formatShortDate } from '../utils/dateFormatter';
 import { buildDocumentUrl } from '../utils/urlBuilder';
 
+const ROW_HEIGHT = 40;
+const HEADER_HEIGHT = 40;
+
 const getFileIcon = (extension) => {
-  if (!extension) return <FileTxt size="M" />;
+  if (!extension) return <FileTxt size="S" />;
   const ext = extension.toLowerCase();
-  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) return <Image size="M" />;
-  if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'xml', 'java', 'py', 'rb', 'php'].includes(ext)) return <FileCode size="M" />;
-  if (['csv', 'xls', 'xlsx', 'xml', 'json'].includes(ext)) return <FileData size="M" />;
-  if (['doc', 'docx', 'pdf', 'txt', 'rtf'].includes(ext)) return <FileTxt size="M" />;
-  return <FileTemplate size="M" />;
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) return <Image size="S" />;
+  if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'xml', 'java', 'py', 'rb', 'php'].includes(ext)) return <FileCode size="S" />;
+  if (['csv', 'xls', 'xlsx', 'xml', 'json'].includes(ext)) return <FileData size="S" />;
+  if (['doc', 'docx', 'pdf', 'txt', 'rtf'].includes(ext)) return <FileTxt size="S" />;
+  return <FileTemplate size="S" />;
 };
 
 const DocumentThumbnail = ({ doc, hostname, sessionToken }) => {
@@ -40,24 +55,46 @@ const DocumentThumbnail = ({ doc, hostname, sessionToken }) => {
         onError={() => setImgStatus('error')}
         style={{
           display: imgStatus === 'loaded' ? 'block' : 'none',
-          width: '64px',
-          height: '64px',
+          width: '24px',
+          height: '24px',
           objectFit: 'cover',
-          borderRadius: '4px'
+          borderRadius: '3px'
         }}
       />
     </>
   );
 };
 
+const COLUMNS = [
+  { key: 'name', label: 'Name', allowsSorting: true },
+  { key: 'type', label: 'Type', allowsSorting: true },
+  { key: 'connection', label: 'Connection', allowsSorting: false },
+  { key: 'addedDate', label: 'Added date', allowsSorting: true },
+  { key: 'creator', label: 'Creator', allowsSorting: true },
+  { key: 'lastModified', label: 'Last modified', allowsSorting: true },
+  { key: 'approvalStatus', label: 'Approval status', allowsSorting: false },
+  { key: 'assets', label: 'Assets', allowsSorting: false },
+  { key: 'linkedTo', label: 'Linked to', allowsSorting: false }
+];
+
+const SORT_VALUE_GETTERS = {
+  name: (doc) => (doc.name || '').toLowerCase(),
+  type: (doc) => (doc.ext || '').toLowerCase(),
+  addedDate: (doc) => doc.entryDate || '',
+  creator: (doc) => (doc.owner?.name || '').toLowerCase(),
+  lastModified: (doc) => doc.lastUpdateDate || doc.entryDate || ''
+};
+
 /**
  * DocumentsSection Component
- * Displays documents attached to a project
+ * Displays documents attached to a project as a sortable grid, styled to
+ * match Workfront's native Documents list.
  */
 const DocumentsSection = ({ projectId, hostname, sessionToken }) => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sortDescriptor, setSortDescriptor] = useState({ column: 'addedDate', direction: 'descending' });
 
   useEffect(() => {
     if (!projectId || !hostname || !sessionToken) {
@@ -81,6 +118,23 @@ const DocumentsSection = ({ projectId, hostname, sessionToken }) => {
     loadDocuments();
   }, [projectId, hostname, sessionToken]);
 
+  const sortedDocuments = useMemo(() => {
+    const getValue = SORT_VALUE_GETTERS[sortDescriptor.column];
+    if (!getValue) {
+      return documents;
+    }
+
+    const sorted = [...documents].sort((a, b) => {
+      const valueA = getValue(a);
+      const valueB = getValue(b);
+      if (valueA < valueB) return -1;
+      if (valueA > valueB) return 1;
+      return 0;
+    });
+
+    return sortDescriptor.direction === 'descending' ? sorted.reverse() : sorted;
+  }, [documents, sortDescriptor]);
+
   if (loading) {
     return (
       <View padding="size-300">
@@ -92,10 +146,10 @@ const DocumentsSection = ({ projectId, hostname, sessionToken }) => {
   }
 
   return (
-    <View 
-      padding="size-300" 
+    <View
+      padding="size-300"
       borderRadius="medium"
-      UNSAFE_style={{ 
+      UNSAFE_style={{
         backgroundColor: 'var(--spectrum-global-color-gray-50)',
         border: '1px solid var(--spectrum-global-color-gray-300)'
       }}
@@ -114,76 +168,53 @@ const DocumentsSection = ({ projectId, hostname, sessionToken }) => {
             No documents attached
           </Text>
         ) : (
-          <Flex direction="column" gap="size-150">
-            {documents.map(doc => (
-              <View 
-                key={doc.ID}
-                padding="size-200"
-                borderRadius="small"
-                UNSAFE_style={{
-                  backgroundColor: 'white',
-                  border: '1px solid var(--spectrum-global-color-gray-200)',
-                  transition: 'box-shadow 0.2s',
-                  cursor: 'pointer'
-                }}
-              >
-                <Flex direction="row" gap="size-200" alignItems="center">
-                  {/* File Icon / Thumbnail */}
-                  <View UNSAFE_style={{ color: 'var(--spectrum-global-color-gray-600)', flexShrink: 0 }}>
-                    <DocumentThumbnail doc={doc} hostname={hostname} sessionToken={sessionToken} />
-                  </View>
-                  
-                  {/* Document Info */}
-                  <Flex direction="column" gap="size-50" flex={1}>
-                    <a 
-                      href={buildDocumentUrl(hostname, doc.ID)} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ 
-                        textDecoration: 'none',
-                        color: 'rgb(0, 84, 182)',
-                        fontWeight: 600,
-                        fontSize: '14px',
-                        transition: 'text-decoration 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                      onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                      {doc.name}
-                    </a>
-                    
-                    <Flex direction="column" gap="size-50">
-                      <Text UNSAFE_style={{ fontSize: '11px', color: 'var(--spectrum-global-color-gray-600)' }}>
-                        Uploaded by: {doc.owner?.name || 'Unknown'}
-                      </Text>
-                      <Text UNSAFE_style={{ fontSize: '11px', color: 'var(--spectrum-global-color-gray-600)' }}>
-                        {formatDate(doc.entryDate || doc.lastUpdateDate, true, true)}
-                      </Text>
+          <TableView
+            aria-label="Documents"
+            density="compact"
+            height={`${HEADER_HEIGHT + sortedDocuments.length * ROW_HEIGHT}px`}
+            sortDescriptor={sortDescriptor}
+            onSortChange={setSortDescriptor}
+          >
+            <TableHeader columns={COLUMNS}>
+              {(column) => (
+                <Column key={column.key} allowsSorting={column.allowsSorting} isRowHeader={column.key === 'name'}>
+                  {column.label}
+                </Column>
+              )}
+            </TableHeader>
+            <TableBody items={sortedDocuments}>
+              {(doc) => (
+                <Row key={doc.ID}>
+                  <Cell>
+                    <Flex alignItems="center" gap="size-100">
+                      <View UNSAFE_style={{ color: 'var(--spectrum-global-color-gray-600)', flexShrink: 0, display: 'flex' }}>
+                        <DocumentThumbnail doc={doc} hostname={hostname} sessionToken={sessionToken} />
+                      </View>
+                      <a
+                        href={buildDocumentUrl(hostname, doc.ID)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          textDecoration: 'none',
+                          color: 'rgb(0, 84, 182)'
+                        }}
+                      >
+                        {doc.name}
+                      </a>
                     </Flex>
-                  </Flex>
-                  
-                  {/* Extension Badge */}
-                  {doc.ext && (
-                    <View
-                      padding="size-50"
-                      paddingStart="size-100"
-                      paddingEnd="size-100"
-                      borderRadius="small"
-                      UNSAFE_style={{
-                        backgroundColor: 'var(--spectrum-global-color-gray-200)',
-                        fontSize: '10px',
-                        fontWeight: 600,
-                        color: 'var(--spectrum-global-color-gray-700)',
-                        textTransform: 'uppercase'
-                      }}
-                    >
-                      {doc.ext}
-                    </View>
-                  )}
-                </Flex>
-              </View>
-            ))}
-          </Flex>
+                  </Cell>
+                  <Cell>{doc.ext || ''}</Cell>
+                  <Cell>{''}</Cell>
+                  <Cell>{formatShortDate(doc.entryDate)}</Cell>
+                  <Cell>{doc.owner?.name || ''}</Cell>
+                  <Cell>{formatShortDate(doc.lastUpdateDate || doc.entryDate)}</Cell>
+                  <Cell>{''}</Cell>
+                  <Cell>-</Cell>
+                  <Cell>{''}</Cell>
+                </Row>
+              )}
+            </TableBody>
+          </TableView>
         )}
       </Flex>
     </View>

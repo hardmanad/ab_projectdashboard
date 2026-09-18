@@ -7,10 +7,20 @@
  */
 function normalizeWorkfrontDate(dateString) {
   if (!dateString) return dateString;
-  
+
   // Replace the last colon before the timezone with a dot for milliseconds
   // Match pattern: T##:##:### where ### are milliseconds
   return dateString.replace(/T(\d{2}):(\d{2}):(\d{2}):(\d{3})/, 'T$1:$2:$3.$4');
+}
+
+/**
+ * Parses a Workfront date string into a Date, for use when sorting/comparing
+ * items from multiple sources (e.g. merging notes with journal entries).
+ * @param {string} isoDate - Date string from Workfront API
+ * @returns {Date} Parsed date (Invalid Date if isoDate is missing/malformed)
+ */
+export function parseWorkfrontDate(isoDate) {
+  return new Date(normalizeWorkfrontDate(isoDate) || 0);
 }
 
 /**
@@ -64,6 +74,53 @@ export function formatDate(isoDate, includeTime = false, fullFormat = false) {
     console.error('Error formatting date:', error);
     return '';
   }
+}
+
+/**
+ * Formats an ISO date string as a short date + time, e.g. "Jul 9, 8:11 AM"
+ * (matches Workfront's native Updates feed timestamp style)
+ * @param {string} isoDate - ISO date string from Workfront
+ * @returns {string} Formatted date string or empty string if date is null/undefined
+ */
+export function formatShortDateTime(isoDate) {
+  if (!isoDate) {
+    return '';
+  }
+
+  const date = parseWorkfrontDate(isoDate);
+  if (isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+/**
+ * Formats an ISO date string as a short numeric date, e.g. "7/7/2026"
+ * (matches Workfront's native grid date columns)
+ * @param {string} isoDate - ISO date string from Workfront
+ * @returns {string} Formatted date string or empty string if date is null/undefined
+ */
+export function formatShortDate(isoDate) {
+  if (!isoDate) {
+    return '';
+  }
+
+  const date = parseWorkfrontDate(isoDate);
+  if (isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
 }
 
 /**

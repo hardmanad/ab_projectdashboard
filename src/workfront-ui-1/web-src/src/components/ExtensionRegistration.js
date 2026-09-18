@@ -37,6 +37,12 @@ function ExtensionRegistration() {
                   label: 'Project Details',
                   icon: icon2,
                 },
+                {
+                  id: 'parent-documents',
+                  url: '/index.html#/parent-documents',
+                  label: 'Parent Documents',
+                  icon: icon2,
+                },
               ];
             },
           },

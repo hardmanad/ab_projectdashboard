@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Flex, Heading, Text, Divider } from '@adobe/react-spectrum';
+import { View, Flex, Heading, Text } from '@adobe/react-spectrum';
+import ChevronDown from '@spectrum-icons/workflow/ChevronDown';
 import { formatDate } from '../utils/dateFormatter';
 import { buildPortfolioUrl, buildProgramUrl } from '../utils/urlBuilder';
 
 /**
  * ProjectMetadata Component
- * Displays detailed metadata about a project
+ * Displays detailed metadata about a project as a grid of cards,
+ * styled to match Workfront's native "Overview" section.
  */
 const ProjectMetadata = ({ project, hostname, statusesMap = {} }) => {
   if (!project) {
@@ -54,26 +56,40 @@ const ProjectMetadata = ({ project, hostname, statusesMap = {} }) => {
   const priorityColors = {
     '0': 'var(--spectrum-global-color-gray-400)',
     '1': 'var(--spectrum-global-color-blue-400)',
-    '2': 'var(--spectrum-global-color-green-600)',
+    '2': 'var(--spectrum-global-color-yellow-600)',
     '3': 'var(--spectrum-global-color-orange-600)',
     '4': 'var(--spectrum-global-color-red-600)'
   };
 
-  // Two-column field component for tighter layout
-  const Field = ({ label, value, isLink = false, linkUrl = '' }) => (
-    <Flex alignItems="flex-start" gap="size-100" UNSAFE_style={{ minWidth: '0', flex: '1 1 45%' }}>
-      <Text UNSAFE_style={{ fontWeight: 600, color: 'var(--spectrum-global-color-gray-700)', whiteSpace: 'nowrap' }}>
-        {label}:
+  const Dot = ({ color }) => (
+    <View
+      width="8px"
+      height="8px"
+      borderRadius="full"
+      UNSAFE_style={{ backgroundColor: color || 'var(--spectrum-global-color-gray-400)', flexShrink: 0 }}
+    />
+  );
+
+  // Label-above-value field, with an optional colored status dot before the value
+  const Field = ({ label, value, isLink = false, linkUrl = '', dotColor }) => (
+    <Flex direction="column" gap="size-50" UNSAFE_style={{ minWidth: 0, flex: '1 1 45%' }}>
+      <Text UNSAFE_style={{ fontSize: '11px', color: 'var(--spectrum-global-color-gray-600)' }}>
+        {label}
       </Text>
-      {isLink && linkUrl ? (
-        <a 
-          href={linkUrl} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          style={{ 
+      {dotColor !== undefined ? (
+        <Flex alignItems="center" gap="size-75">
+          <Dot color={dotColor} />
+          <Text UNSAFE_style={{ fontSize: '13px' }}>{value}</Text>
+        </Flex>
+      ) : isLink && linkUrl ? (
+        <a
+          href={linkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '13px',
             textDecoration: 'none',
             color: 'rgb(0, 84, 182)',
-            transition: 'text-decoration 0.2s',
             wordBreak: 'break-word'
           }}
           onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
@@ -82,174 +98,139 @@ const ProjectMetadata = ({ project, hostname, statusesMap = {} }) => {
           {value}
         </a>
       ) : (
-        <Text UNSAFE_style={{ wordBreak: 'break-word' }}>{value || 'N/A'}</Text>
+        <Text UNSAFE_style={{ fontSize: '13px', wordBreak: 'break-word' }}>{value || 'N/A'}</Text>
       )}
     </Flex>
   );
 
-  const Badge = ({ text, color }) => (
+  const FieldRow = ({ children }) => (
+    <Flex direction="row" gap="size-300" wrap>
+      {children}
+    </Flex>
+  );
+
+  const Card = ({ title, children }) => (
     <View
-      padding="size-75"
-      paddingStart="size-150"
-      paddingEnd="size-150"
+      padding="size-250"
       borderRadius="medium"
       UNSAFE_style={{
-        backgroundColor: color || 'var(--spectrum-global-color-gray-200)',
-        display: 'inline-block',
-        color: 'white',
-        fontSize: '12px',
-        fontWeight: 600
+        backgroundColor: 'white',
+        border: '1px solid var(--spectrum-global-color-gray-200)'
       }}
     >
-      {text}
+      <Flex direction="column" gap="size-200">
+        <Text UNSAFE_style={{ fontWeight: 700, fontSize: '14px' }}>{title}</Text>
+        {children}
+      </Flex>
     </View>
   );
 
   return (
-    <View 
-      padding="size-300" 
+    <View
+      padding="size-200"
       borderRadius="medium"
-      UNSAFE_style={{ 
-        backgroundColor: 'var(--spectrum-global-color-gray-50)',
-        border: '1px solid var(--spectrum-global-color-gray-300)'
-      }}
+      UNSAFE_style={{ backgroundColor: 'var(--spectrum-global-color-gray-75)' }}
     >
       <Flex direction="column" gap="size-200">
-        <Heading level={3}>Project Details</Heading>
-        
-        <Divider size="S" />
+        <Flex alignItems="center" gap="size-100">
+          <ChevronDown size="S" />
+          <Heading level={3} UNSAFE_style={{ margin: 0 }}>Overview</Heading>
+        </Flex>
 
-        {/* Status, Condition, and Priority */}
-        <Flex direction="row" gap="size-200" alignItems="center" wrap>
-          <Text UNSAFE_style={{ fontWeight: 600, color: 'var(--spectrum-global-color-gray-700)' }}>
-            Status:
-          </Text>
-          <Badge 
-            text={statusesMap[project.status] || project.status || 'Unknown'} 
-            color={statusColors[project.status]} 
-          />
-          
-          {project.condition && (
-            <>
-              <Text UNSAFE_style={{ fontWeight: 600, color: 'var(--spectrum-global-color-gray-700)', marginLeft: '20px' }}>
-                Condition:
+        <View UNSAFE_style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <Card title="Description">
+            {project.description ? (
+              <Text UNSAFE_style={{ fontSize: '13px', lineHeight: '1.5' }}>{project.description}</Text>
+            ) : (
+              <Text UNSAFE_style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--spectrum-global-color-gray-500)' }}>
+                No description
               </Text>
-              <Badge 
-                text={conditionLabels[project.condition] || project.condition} 
-                color={conditionColors[project.condition]} 
+            )}
+          </Card>
+
+          <Card title="Basic Information">
+            <FieldRow>
+              <Field
+                label="Status"
+                value={statusesMap[project.status] || project.status || 'Unknown'}
+                dotColor={statusColors[project.status]}
               />
-            </>
-          )}
-          
-          {project.priority !== undefined && (
-            <>
-              <Text UNSAFE_style={{ fontWeight: 600, color: 'var(--spectrum-global-color-gray-700)', marginLeft: '20px' }}>
-                Priority:
-              </Text>
-              <Badge 
-                text={priorityLabels[project.priority] || project.priority} 
-                color={priorityColors[project.priority]} 
+              {project.priority !== undefined && (
+                <Field
+                  label="Priority"
+                  value={priorityLabels[project.priority] || project.priority}
+                  dotColor={priorityColors[project.priority]}
+                />
+              )}
+            </FieldRow>
+          </Card>
+
+          <Card title="Project Condition">
+            <Field
+              label="Condition"
+              value={conditionLabels[project.condition] || project.condition || 'N/A'}
+              dotColor={conditionColors[project.condition]}
+            />
+          </Card>
+
+          <Card title="Organization">
+            <FieldRow>
+              <Field label="Project Owner" value={project.owner?.name || 'Unknown'} />
+              {project.portfolio?.name && project.portfolioID && (
+                <Field
+                  label="Portfolio"
+                  value={project.portfolio.name}
+                  isLink={true}
+                  linkUrl={buildPortfolioUrl(hostname, project.portfolioID)}
+                />
+              )}
+            </FieldRow>
+            {(project.program?.name || project.group?.name) && (
+              <FieldRow>
+                {project.program?.name && project.programID && (
+                  <Field
+                    label="Program"
+                    value={project.program.name}
+                    isLink={true}
+                    linkUrl={buildProgramUrl(hostname, project.programID)}
+                  />
+                )}
+                {project.group?.name && (
+                  <Field label="Group" value={project.group.name} />
+                )}
+              </FieldRow>
+            )}
+            {project.company?.name && (
+              <FieldRow>
+                <Field label="Company" value={project.company.name} />
+              </FieldRow>
+            )}
+          </Card>
+
+          <Card title="Timeline">
+            <FieldRow>
+              <Field label="Entry Date" value={formatDate(project.entryDate, true, true)} />
+              <Field label="Planned Start" value={formatDate(project.plannedStartDate, true, true)} />
+            </FieldRow>
+            <FieldRow>
+              <Field
+                label="Percent Complete"
+                value={project.percentComplete !== undefined ? `${project.percentComplete}%` : 'N/A'}
               />
-            </>
-          )}
-        </Flex>
-
-        <Divider size="S" />
-
-        {/* Timeline Section - Two Column Layout */}
-        <Heading level={4} UNSAFE_style={{ fontSize: '14px', marginTop: '8px', marginBottom: '8px' }}>
-          Timeline
-        </Heading>
-        
-        <Flex direction="row" gap="size-200" wrap UNSAFE_style={{ rowGap: '8px' }}>
-          {/* Row 1 */}
-          <Field 
-            label="Entry Date" 
-            value={formatDate(project.entryDate, true, true)} 
-          />
-          <Field 
-            label="Planned Start" 
-            value={formatDate(project.plannedStartDate, true, true)} 
-          />
-          
-          {/* Row 2 */}
-          <Field 
-            label="Percent Complete" 
-            value={project.percentComplete !== undefined ? `${project.percentComplete}%` : 'N/A'} 
-          />
-          <Field 
-            label="Planned Completion" 
-            value={formatDate(project.plannedCompletionDate, true, true)} 
-          />
-          
-          {/* Row 3 (if actuals exist) */}
-          {project.actualStartDate && (
-            <Field 
-              label="Actual Start" 
-              value={formatDate(project.actualStartDate, true, true)} 
-            />
-          )}
-          {project.actualCompletionDate && (
-            <Field 
-              label="Actual Completion" 
-              value={formatDate(project.actualCompletionDate, true, true)} 
-            />
-          )}
-        </Flex>
-
-        <Divider size="S" marginTop="size-150" />
-
-        {/* Organization Section - Two Column Layout */}
-        <Heading level={4} UNSAFE_style={{ fontSize: '14px', marginTop: '8px', marginBottom: '8px' }}>
-          Organization
-        </Heading>
-        
-        <Flex direction="row" gap="size-200" wrap UNSAFE_style={{ rowGap: '8px' }}>
-          <Field 
-            label="Project Owner" 
-            value={project.owner?.name || 'Unknown'} 
-          />
-          {project.portfolio?.name && project.portfolioID && (
-            <Field 
-              label="Portfolio" 
-              value={project.portfolio.name}
-              isLink={true}
-              linkUrl={buildPortfolioUrl(hostname, project.portfolioID)}
-            />
-          )}
-          {project.program?.name && project.programID && (
-            <Field 
-              label="Program" 
-              value={project.program.name}
-              isLink={true}
-              linkUrl={buildProgramUrl(hostname, project.programID)}
-            />
-          )}
-          {project.group?.name && (
-            <Field 
-              label="Group" 
-              value={project.group.name}
-            />
-          )}
-          {project.company?.name && (
-            <Field 
-              label="Company" 
-              value={project.company.name}
-            />
-          )}
-        </Flex>
-
-        {project.description && (
-          <>
-            <Divider size="S" marginTop="size-150" />
-            <Heading level={4} UNSAFE_style={{ fontSize: '14px', marginTop: '8px', marginBottom: '4px' }}>
-              Description
-            </Heading>
-            <Text UNSAFE_style={{ fontSize: '13px', lineHeight: '1.5' }}>
-              {project.description}
-            </Text>
-          </>
-        )}
+              <Field label="Planned Completion" value={formatDate(project.plannedCompletionDate, true, true)} />
+            </FieldRow>
+            {(project.actualStartDate || project.actualCompletionDate) && (
+              <FieldRow>
+                {project.actualStartDate && (
+                  <Field label="Actual Start" value={formatDate(project.actualStartDate, true, true)} />
+                )}
+                {project.actualCompletionDate && (
+                  <Field label="Actual Completion" value={formatDate(project.actualCompletionDate, true, true)} />
+                )}
+              </FieldRow>
+            )}
+          </Card>
+        </View>
       </Flex>
     </View>
   );

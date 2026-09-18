@@ -10,6 +10,7 @@ import ExtensionRegistration from "./ExtensionRegistration";
 
 import ProjectDashboard from "./ProjectDashboardMainMenuItem";
 import ProjectTab from "./ProjectTab";
+import ParentDocumentsTab from "./ParentDocumentsTab";
 
 function App() {
   return (
@@ -26,6 +27,10 @@ function App() {
           <Route
             exact path="project-tab"
             element={<ProjectTab />}
+          />
+          <Route
+            exact path="parent-documents"
+            element={<ParentDocumentsTab />}
           />
         </Routes>
       </ErrorBoundary>

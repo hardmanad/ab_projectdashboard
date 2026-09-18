@@ -37,8 +37,29 @@ runtimeManifest:
           annotations:
             require-adobe-auth: false
             final: true
+        get-parent-documents:
+          function: actions/get-parent-documents/index.js
+          web: 'yes'
+          runtime: 'nodejs:22'
+          annotations:
+            require-adobe-auth: false
+            final: true
         get-project-statuses:
           function: actions/get-project-statuses/index.js
+          web: 'yes'
+          runtime: 'nodejs:22'
+          annotations:
+            require-adobe-auth: false
+            final: true
+        get-project-journal:
+          function: actions/get-project-journal/index.js
+          web: 'yes'
+          runtime: 'nodejs:22'
+          annotations:
+            require-adobe-auth: false
+            final: true
+        get-object-name:
+          function: actions/get-object-name/index.js
           web: 'yes'
           runtime: 'nodejs:22'
           annotations:

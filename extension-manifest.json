@@ -9,6 +9,16 @@
       "id": "project-dashboard"
     }
   ],
+  "secondaryNavItems": [
+    {
+      "label": "Project Details",
+      "id": "project-tab"
+    },
+    {
+      "label": "Parent Documents",
+      "id": "parent-documents"
+    }
+  ],
   "apiVersion": "v20.0",
   "contextAccess": {
     "hostname": true,

@@ -6,6 +6,8 @@
  */
 
 import actionWebInvoke from '../utils';
+import { isDuplicateJournalEntry } from '../utils/journalFormatter';
+import { parseWorkfrontDate } from '../utils/dateFormatter';
 
 function getActionUrl(actionName) {
   const actionPath = `/api/v1/web/workfront-ui-1/${actionName}`;
@@ -85,6 +87,40 @@ export async function fetchComments(hostname, sessionToken, projectId, limit = 1
 }
 
 /**
+ * Fetches the display name of an arbitrary Workfront object (used to resolve the
+ * name of whatever object a note is attached to — a task, issue, document, etc.
+ * — when that name isn't already available via a cheap field expansion).
+ */
+export async function fetchObjectName(hostname, sessionToken, objCode, objID) {
+  const response = await callAction('get-object-name', {
+    hostname,
+    token: sessionToken,
+    objCode,
+    objID
+  });
+  return response.data?.name || null;
+}
+
+/**
+ * Fetches system-generated journal entries (status changes, condition/health updates,
+ * document uploads, etc.) for a project. These are the "system update" entries shown
+ * alongside user notes when "Show System Updates" is checked.
+ */
+export async function fetchJournalEntries(hostname, sessionToken, projectId) {
+  const response = await callAction('get-project-journal', {
+    hostname,
+    token: sessionToken,
+    projectId
+  });
+
+  const entries = (response.data || []).filter(entry => !isDuplicateJournalEntry(entry));
+
+  entries.sort((a, b) => parseWorkfrontDate(b.entryDate) - parseWorkfrontDate(a.entryDate));
+
+  return entries;
+}
+
+/**
  * Fetches documents attached to a project.
  */
 export async function fetchDocuments(hostname, sessionToken, projectId) {
@@ -107,11 +143,29 @@ export async function fetchDocuments(hostname, sessionToken, projectId) {
     return {
       ...doc,
       ext: extensionFromCurrentVersion || doc.ext || doc.fileType || doc.extension || extensionFromName,
-      entryDate: doc.lastUpdateDate || doc.lastModDate
+      entryDate: doc.entryDate || doc.lastUpdateDate || doc.lastModDate
     };
   });
 
   return documents;
+}
+
+/**
+ * Fetches documents attached to a portfolio or program.
+ */
+export async function fetchParentDocuments(hostname, sessionToken, objCode, objID) {
+  const response = await callAction('get-parent-documents', {
+    hostname,
+    token: sessionToken,
+    objCode,
+    objID
+  });
+
+  return (response.data || []).map((doc) => ({
+    ...doc,
+    ext: doc.currentVersion?.ext || doc.ext || doc.fileType || doc.extension || '',
+    entryDate: doc.entryDate || doc.lastUpdateDate || doc.lastModDate
+  }));
 }
 
 /**

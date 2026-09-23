@@ -15,8 +15,8 @@
       "id": "project-tab"
     },
     {
-      "label": "Parent Documents",
-      "id": "parent-documents"
+      "label": "Custom Documents",
+      "id": "custom-documents"
     }
   ],
   "apiVersion": "v20.0",

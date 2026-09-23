@@ -38,9 +38,9 @@ function ExtensionRegistration() {
                   icon: icon2,
                 },
                 {
-                  id: 'parent-documents',
-                  url: '/index.html#/parent-documents',
-                  label: 'Parent Documents',
+                  id: 'custom-documents',
+                  url: '/index.html#/custom-documents',
+                  label: 'Custom Documents',
                   icon: icon2,
                 },
               ];

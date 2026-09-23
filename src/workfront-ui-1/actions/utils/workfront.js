@@ -57,9 +57,9 @@ function buildAuthHeaders(token) {
   return { 'sessionID': token, 'Content-Type': 'application/json' };
 }
 
-async function callWorkfrontApi(hostname, token, endpoint, queryParams = {}) {
+async function callWorkfrontApi(hostname, token, endpoint, queryParams = {}, apiVersion = API_VERSION) {
   const base = normalizeHostname(hostname);
-  const url = new URL(`${base}/attask/api/${API_VERSION}/${endpoint}`);
+  const url = new URL(`${base}/attask/api/${apiVersion}/${endpoint}`);
 
   Object.entries(queryParams).forEach(([key, value]) => {
     if (value !== null && value !== undefined) {
@@ -67,7 +67,11 @@ async function callWorkfrontApi(hostname, token, endpoint, queryParams = {}) {
     }
   });
 
-  console.log('Workfront API request:', endpoint);
+  const requestStartedAt = Date.now();
+  console.log('[Workfront API request]', JSON.stringify({
+    endpoint,
+    requestUrl: url.toString()
+  }));
 
   const response = await fetch(url.toString(), {
     method: 'GET',
@@ -77,6 +81,14 @@ async function callWorkfrontApi(hostname, token, endpoint, queryParams = {}) {
   const text = await response.text();
   let data;
   try { data = JSON.parse(text); } catch (e) { data = text; }
+
+  console.log('[Workfront API response]', JSON.stringify({
+    endpoint,
+    requestUrl: url.toString(),
+    status: response.status,
+    durationMs: Date.now() - requestStartedAt,
+    responseBody: data
+  }));
 
   if (!response.ok) {
     const err = new Error(`Workfront API error: ${response.status}`);

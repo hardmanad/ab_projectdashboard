@@ -151,10 +151,10 @@ export async function fetchDocuments(hostname, sessionToken, projectId) {
 }
 
 /**
- * Fetches documents attached to a portfolio or program.
+ * Fetches documents attached to a portfolio, program, or project.
  */
-export async function fetchParentDocuments(hostname, sessionToken, objCode, objID) {
-  const response = await callAction('get-parent-documents', {
+export async function fetchCustomDocuments(hostname, sessionToken, objCode, objID) {
+  const response = await callAction('get-custom-documents', {
     hostname,
     token: sessionToken,
     objCode,

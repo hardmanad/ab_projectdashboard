@@ -6,11 +6,29 @@ const {
   callWorkfrontApi
 } = require('../utils/workfront');
 
-const PARENT_OBJECT_CODES = ['PORT', 'PRGM'];
+const PARENT_OBJECT_CODES = ['PORT', 'PRGM', 'PROJ'];
 const PARENT_ID_FIELDS = {
   PORT: 'portfolioID',
-  PRGM: 'programID'
+  PRGM: 'programID',
+  PROJ: 'projectID'
 };
+
+async function addAemMetadata(hostname, token, document) {
+  if (!document.currentVersionID) {
+    return { ...document, aemurn: null };
+  }
+
+  try {
+    const version = await callWorkfrontApi(hostname, token, `docv/${document.currentVersionID}`, {
+      fields: 'aemurn'
+    }, 'unsupported');
+    const versionData = version.data || version;
+    return { ...document, aemurn: versionData.aemurn || null };
+  } catch (err) {
+    console.warn(`Unable to load metadata for document version ${document.currentVersionID}:`, err.message);
+    return { ...document, aemurn: null };
+  }
+}
 
 async function main(params) {
   const hostnameErr = validateHostname(params.hostname);
@@ -29,11 +47,28 @@ async function main(params) {
     const parentIdField = PARENT_ID_FIELDS[params.objCode];
     const data = await callWorkfrontApi(params.hostname, params.token, 'document/search', {
       [parentIdField]: params.objID,
-      fields: 'ID,name,lastUpdateDate,owner:name,currentVersion:ext,currentVersionID'
+      fields: '*,owner:name,currentVersion:ext,currentVersionID'
     });
-    return { statusCode: 200, body: data };
+    console.log('[Custom documents]', JSON.stringify({
+      parentObjectCode: params.objCode,
+      parentId: params.objID,
+      documentCount: (data.data || []).length,
+      documents: (data.data || []).map(document => ({
+        documentId: document.ID,
+        currentVersionID: document.currentVersionID
+      }))
+    }));
+    const documents = await Promise.all((data.data || []).map(document => (
+      addAemMetadata(params.hostname, params.token, document)
+    )));
+    console.log('[Custom document AEM metadata]', JSON.stringify((documents || []).map(document => ({
+      documentId: document.ID,
+      currentVersionID: document.currentVersionID,
+      aemurn: document.aemurn || null
+    }))));
+    return { statusCode: 200, body: { ...data, data: documents } };
   } catch (err) {
-    console.error('get-parent-documents error:', err.message);
+    console.error('get-custom-documents error:', err.message);
     return { statusCode: err.status || 500, body: { error: err.message } };
   }
 }

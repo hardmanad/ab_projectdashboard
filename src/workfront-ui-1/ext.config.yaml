@@ -44,6 +44,13 @@ runtimeManifest:
           annotations:
             require-adobe-auth: false
             final: true
+        get-document-thumbnail:
+          function: actions/get-document-thumbnail/index.js
+          web: 'yes'
+          runtime: 'nodejs:22'
+          annotations:
+            require-adobe-auth: false
+            final: true
         get-project-statuses:
           function: actions/get-project-statuses/index.js
           web: 'yes'

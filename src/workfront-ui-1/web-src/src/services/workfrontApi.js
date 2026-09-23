@@ -169,6 +169,21 @@ export async function fetchCustomDocuments(hostname, sessionToken, objCode, objI
 }
 
 /**
+ * Fetches a document thumbnail through an action so auth does not depend on iframe cookies.
+ */
+export async function fetchDocumentThumbnail(hostname, sessionToken, documentId, documentVersionId, size) {
+  const response = await callAction('get-document-thumbnail', {
+    hostname,
+    token: sessionToken,
+    documentId,
+    documentVersionId,
+    size
+  });
+
+  return response.dataUrl;
+}
+
+/**
  * Fetches available project statuses.
  */
 export async function fetchStatuses(hostname, sessionToken) {

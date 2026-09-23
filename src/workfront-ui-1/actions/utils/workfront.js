@@ -100,4 +100,48 @@ async function callWorkfrontApi(hostname, token, endpoint, queryParams = {}, api
   return data;
 }
 
-module.exports = { validateHostname, validateToken, validateWorkfrontId, validateObjCode, callWorkfrontApi };
+async function callWorkfrontInternalBinary(hostname, token, endpoint, queryParams = {}) {
+  const base = normalizeHostname(hostname);
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = new URL(`${base}${normalizedEndpoint}`);
+
+  Object.entries(queryParams).forEach(([key, value]) => {
+    if (value !== null && value !== undefined) {
+      url.searchParams.append(key, value);
+    }
+  });
+
+  const requestStartedAt = Date.now();
+  console.log('[Workfront internal request]', JSON.stringify({
+    endpoint: normalizedEndpoint,
+    requestUrl: url.toString()
+  }));
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: buildAuthHeaders(token)
+  });
+
+  const contentType = response.headers.get('content-type') || 'application/octet-stream';
+  const buffer = await response.buffer();
+
+  console.log('[Workfront internal response]', JSON.stringify({
+    endpoint: normalizedEndpoint,
+    requestUrl: url.toString(),
+    status: response.status,
+    contentType,
+    contentLength: buffer.length,
+    durationMs: Date.now() - requestStartedAt
+  }));
+
+  if (!response.ok) {
+    const err = new Error(`Workfront internal API error: ${response.status}`);
+    err.status = response.status;
+    err.data = buffer.toString('utf8');
+    throw err;
+  }
+
+  return { buffer, contentType };
+}
+
+module.exports = { validateHostname, validateToken, validateWorkfrontId, validateObjCode, callWorkfrontApi, callWorkfrontInternalBinary };

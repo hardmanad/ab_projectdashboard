@@ -20,7 +20,7 @@ import ViewGrid from '@spectrum-icons/workflow/ViewGrid';
 import ViewList from '@spectrum-icons/workflow/ViewList';
 import { attach } from '@adobe/uix-guest';
 import { extensionId } from './Constants';
-import { fetchCustomDocuments, fetchProjectDetails } from '../services/workfrontApi';
+import { fetchCustomDocuments, fetchDocumentThumbnail, fetchProjectDetails } from '../services/workfrontApi';
 import { formatShortDate } from '../utils/dateFormatter';
 import { buildDocumentUrl, buildWorkfrontObjectUrl, ensureProtocol } from '../utils/urlBuilder';
 
@@ -53,10 +53,36 @@ const AemAssetIcon = ({ className = '' }) => (
 );
 
 const DocumentPreview = ({ document, hostname, sessionToken, large = false }) => {
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [failed, setFailed] = useState(false);
-  const canLoadThumbnail = document.currentVersionID && hostname && sessionToken && !failed;
+  const thumbnailSize = large ? 'LARGE' : 'MEDIUM';
+  const canLoadThumbnail = document.ID && document.currentVersionID && hostname && sessionToken && !failed;
 
-  if (!canLoadThumbnail) {
+  useEffect(() => {
+    setFailed(false);
+    setThumbnailUrl('');
+  }, [document.ID, document.currentVersionID, thumbnailSize]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!canLoadThumbnail) {
+      setThumbnailUrl('');
+      return () => { isMounted = false; };
+    }
+
+    fetchDocumentThumbnail(hostname, sessionToken, document.ID, document.currentVersionID, thumbnailSize)
+      .then((dataUrl) => {
+        if (isMounted) setThumbnailUrl(dataUrl || '');
+      })
+      .catch(() => {
+        if (isMounted) setFailed(true);
+      });
+
+    return () => { isMounted = false; };
+  }, [canLoadThumbnail, document.ID, document.currentVersionID, hostname, sessionToken, thumbnailSize]);
+
+  if (!canLoadThumbnail || !thumbnailUrl) {
     return (
       <div className={large ? 'custom-doc-preview-icon custom-doc-preview-icon-large' : 'custom-doc-preview-icon'}>
         {getFileIcon(document.ext, large ? 'XXL' : 'S')}
@@ -64,7 +90,6 @@ const DocumentPreview = ({ document, hostname, sessionToken, large = false }) =>
     );
   }
 
-  const thumbnailUrl = `${hostname}/internal/document/thumbnail?ID=${document.ID}&documentVersionID=${document.currentVersionID}&size=ORIGINAL&sessionID=${encodeURIComponent(sessionToken)}`;
   return (
     <img
       className={large ? 'custom-doc-preview custom-doc-preview-large' : 'custom-doc-preview'}

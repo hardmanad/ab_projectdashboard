@@ -170,17 +170,73 @@ export async function fetchCustomDocuments(hostname, sessionToken, objCode, objI
 
 /**
  * Fetches a document thumbnail through an action so auth does not depend on iframe cookies.
+ * Results are cached in-memory per document version so switching views or tabs doesn't refetch.
  */
+const thumbnailCache = new Map();
+
 export async function fetchDocumentThumbnail(hostname, sessionToken, documentId, documentVersionId, size) {
-  const response = await callAction('get-document-thumbnail', {
+  const cacheKey = `${documentId}:${documentVersionId}:${size || 'ORIGINAL'}`;
+
+  if (thumbnailCache.has(cacheKey)) {
+    return thumbnailCache.get(cacheKey);
+  }
+
+  const requestPromise = callAction('get-document-thumbnail', {
     hostname,
     token: sessionToken,
     documentId,
     documentVersionId,
     size
+  })
+    .then((response) => response.dataUrl)
+    .catch((error) => {
+      thumbnailCache.delete(cacheKey);
+      throw error;
+    });
+
+  thumbnailCache.set(cacheKey, requestPromise);
+  return requestPromise;
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result || '';
+      const base64 = String(result).split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Uploads a document to the current project through Workfront's upload + document create flow.
+ */
+export async function uploadProjectDocument(hostname, sessionToken, projectId, file) {
+  const fileContent = await readFileAsBase64(file);
+  const response = await callAction('upload-project-document', {
+    hostname,
+    token: sessionToken,
+    projectId,
+    fileName: file.name,
+    contentType: file.type || 'application/octet-stream',
+    fileContent
   });
 
-  return response.dataUrl;
+  return response.data || response;
+}
+
+/**
+ * Downloads selected documents as a zip assembled by an App Builder action.
+ */
+export async function bulkDownloadDocuments(hostname, sessionToken, documentIds) {
+  return callAction('bulk-download-documents', {
+    hostname,
+    token: sessionToken,
+    documentIds
+  });
 }
 
 /**

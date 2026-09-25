@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActionButton,
+  Button,
   ButtonGroup,
   Flex,
   Heading,
@@ -11,16 +12,19 @@ import {
   View,
   defaultTheme
 } from '@adobe/react-spectrum';
+import Download from '@spectrum-icons/workflow/Download';
 import FileCode from '@spectrum-icons/workflow/FileCode';
 import FileData from '@spectrum-icons/workflow/FileData';
 import FileTemplate from '@spectrum-icons/workflow/FileTemplate';
 import FileTxt from '@spectrum-icons/workflow/FileTxt';
 import Image from '@spectrum-icons/workflow/Image';
+import LinkOut from '@spectrum-icons/workflow/LinkOut';
+import UploadToCloud from '@spectrum-icons/workflow/UploadToCloud';
 import ViewGrid from '@spectrum-icons/workflow/ViewGrid';
 import ViewList from '@spectrum-icons/workflow/ViewList';
 import { attach } from '@adobe/uix-guest';
 import { extensionId } from './Constants';
-import { fetchCustomDocuments, fetchDocumentThumbnail, fetchProjectDetails } from '../services/workfrontApi';
+import { bulkDownloadDocuments, fetchCustomDocuments, fetchDocumentThumbnail, fetchProjectDetails, uploadProjectDocument } from '../services/workfrontApi';
 import { formatShortDate } from '../utils/dateFormatter';
 import { buildDocumentUrl, buildWorkfrontObjectUrl, ensureProtocol } from '../utils/urlBuilder';
 
@@ -34,6 +38,38 @@ const getFileIcon = (extension, size = 'M') => {
 };
 
 const hasAemAsset = (document) => Boolean(document.aemurn);
+const VIEW_MODE_STORAGE_KEY = 'customDocumentsViewMode';
+
+const buildFrameIoUrl = (externalStorageID) => {
+  if (!externalStorageID) return '';
+
+  const [resourceId, version = '0'] = externalStorageID.split('|');
+  if (!resourceId || !resourceId.startsWith('urn:aaid:')) return '';
+
+  return `https://f.io/r/${resourceId}?version=${encodeURIComponent(version)}`;
+};
+
+const getFrameIoUrl = (document) => (
+  document ? buildFrameIoUrl(document.externalStorageID || document.currentVersion?.externalStorageID) : ''
+);
+
+const getStoredViewMode = () => {
+  try {
+    const storedViewMode = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    return storedViewMode === 'grid' || storedViewMode === 'list' ? storedViewMode : 'list';
+  } catch (error) {
+    return 'list';
+  }
+};
+
+const saveRemoteFile = (fileName, downloadUrl) => {
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = fileName || 'workfront-documents.zip';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+};
 
 const AemAssetIcon = ({ className = '' }) => (
   <svg
@@ -55,7 +91,8 @@ const AemAssetIcon = ({ className = '' }) => (
 const DocumentPreview = ({ document, hostname, sessionToken, large = false }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [failed, setFailed] = useState(false);
-  const thumbnailSize = large ? 'LARGE' : 'MEDIUM';
+  // LARGE is used for both list and gallery views so switching views reuses the cached thumbnail
+  const thumbnailSize = 'LARGE';
   const canLoadThumbnail = document.ID && document.currentVersionID && hostname && sessionToken && !failed;
 
   useEffect(() => {
@@ -71,11 +108,13 @@ const DocumentPreview = ({ document, hostname, sessionToken, large = false }) =>
       return () => { isMounted = false; };
     }
 
+    // fetchDocumentThumbnail caches the result so switching views/tabs doesn't refetch
     fetchDocumentThumbnail(hostname, sessionToken, document.ID, document.currentVersionID, thumbnailSize)
       .then((dataUrl) => {
         if (isMounted) setThumbnailUrl(dataUrl || '');
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error('[DocumentPreview] thumbnail fetch failed', document.ID, document.currentVersionID, error);
         if (isMounted) setFailed(true);
       });
 
@@ -100,15 +139,71 @@ const DocumentPreview = ({ document, hostname, sessionToken, large = false }) =>
   );
 };
 
-const CustomDocumentSection = ({ parent, documents, viewMode, hostname, sessionToken }) => {
+const ProjectUploadDropZone = ({ isUploading, onUpload }) => {
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length) onUpload(files);
+  };
+
+  return (
+    <div
+      className={`custom-doc-upload-zone${isDragging ? ' custom-doc-upload-zone-active' : ''}${isUploading ? ' custom-doc-upload-zone-disabled' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      role="button"
+      tabIndex={0}
+      aria-disabled={isUploading}
+    >
+      {isUploading ? <ProgressCircle aria-label="Uploading documents" isIndeterminate size="S" /> : <UploadToCloud size="L" />}
+      <span>{isUploading ? 'Uploading documents...' : 'Drop files here to upload'}</span>
+    </div>
+  );
+};
+
+const CustomDocumentSection = ({
+  parent,
+  documents,
+  viewMode,
+  hostname,
+  sessionToken,
+  isUploading,
+  onUploadProjectDocuments,
+  selectedDocumentIds,
+  onToggleDocument,
+  onToggleSectionDocuments,
+  selectedFrameIoUrl,
+  openingFrameIo,
+  onOpenInFrameIo
+}) => {
   const parentUrl = parent.ID ? buildWorkfrontObjectUrl(hostname, parent.objCode, parent.ID) : '';
+  const documentIds = documents.map((document) => document.ID);
+  const selectedCount = documentIds.filter((documentId) => selectedDocumentIds.has(documentId)).length;
+  const allDocumentsSelected = documentIds.length > 0 && selectedCount === documentIds.length;
+  const someDocumentsSelected = selectedCount > 0 && selectedCount < documentIds.length;
 
   return (
     <section className="custom-doc-section" aria-labelledby={`${parent.objCode}-documents-heading`}>
       <div className="custom-doc-section-heading">
         <div>
           <Heading id={`${parent.objCode}-documents-heading`} level={2} marginBottom="size-50">
-            {parent.label} documents
+            {parent.label} Documents
           </Heading>
           {parent.ID ? (
             <a className="custom-doc-parent-link" href={parentUrl} target="_blank" rel="noopener noreferrer">
@@ -118,7 +213,36 @@ const CustomDocumentSection = ({ parent, documents, viewMode, hostname, sessionT
             <Text UNSAFE_className="custom-doc-muted">This project is not assigned to a {parent.label.toLowerCase()}.</Text>
           )}
         </div>
-        {parent.ID && <Text UNSAFE_className="custom-doc-count">{documents.length} {documents.length === 1 ? 'document' : 'documents'}</Text>}
+        {parent.ID && (
+          <div className="custom-doc-section-actions">
+            {parent.objCode === 'PROJ' && (
+              <Button
+                isDisabled={!selectedFrameIoUrl || openingFrameIo}
+                onPress={onOpenInFrameIo}
+                variant={selectedFrameIoUrl ? 'cta' : 'secondary'}
+              >
+                {openingFrameIo ? <ProgressCircle aria-label="Opening in Frame.io" isIndeterminate size="S" /> : <LinkOut />}
+                <Text>{openingFrameIo ? 'Opening' : 'Open in Frame.io'}</Text>
+              </Button>
+            )}
+            {documents.length > 0 && (
+              <label className="custom-doc-select-all">
+                <input
+                  aria-label={`Select all ${parent.label.toLowerCase()} documents`}
+                  checked={allDocumentsSelected}
+                  className="custom-doc-checkbox"
+                  onChange={() => onToggleSectionDocuments(documentIds, !allDocumentsSelected)}
+                  ref={(element) => {
+                    if (element) element.indeterminate = someDocumentsSelected;
+                  }}
+                  type="checkbox"
+                />
+                <span>Select all</span>
+              </label>
+            )}
+            <Text UNSAFE_className="custom-doc-count">{documents.length} {documents.length === 1 ? 'document' : 'documents'}</Text>
+          </div>
+        )}
       </div>
 
       {parent.ID && documents.length === 0 && (
@@ -130,6 +254,18 @@ const CustomDocumentSection = ({ parent, documents, viewMode, hostname, sessionT
           <table className="custom-doc-table">
             <thead>
               <tr>
+                <th className="custom-doc-select-column" aria-label="Select documents">
+                  <input
+                    aria-label={`Select all ${parent.label.toLowerCase()} documents`}
+                    checked={allDocumentsSelected}
+                    className="custom-doc-checkbox"
+                    onChange={() => onToggleSectionDocuments(documentIds, !allDocumentsSelected)}
+                    ref={(element) => {
+                      if (element) element.indeterminate = someDocumentsSelected;
+                    }}
+                    type="checkbox"
+                  />
+                </th>
                 <th>Name</th>
                 <th>Type</th>
                 <th>Added date</th>
@@ -141,6 +277,15 @@ const CustomDocumentSection = ({ parent, documents, viewMode, hostname, sessionT
             <tbody>
               {documents.map((document) => (
                 <tr key={document.ID}>
+                  <td className="custom-doc-select-column">
+                    <input
+                      aria-label={`Select ${document.name}`}
+                      checked={selectedDocumentIds.has(document.ID)}
+                      className="custom-doc-checkbox"
+                      onChange={() => onToggleDocument(document.ID)}
+                      type="checkbox"
+                    />
+                  </td>
                   <td>
                     <div className="custom-doc-name-cell">
                       <DocumentPreview document={document} hostname={hostname} sessionToken={sessionToken} />
@@ -164,24 +309,52 @@ const CustomDocumentSection = ({ parent, documents, viewMode, hostname, sessionT
       {parent.ID && documents.length > 0 && viewMode === 'grid' && (
         <div className="custom-doc-grid">
           {documents.map((document) => (
-            <a
+            <div
               className="custom-doc-card"
-              href={buildDocumentUrl(hostname, document.ID)}
-              target="_blank"
-              rel="noopener noreferrer"
               key={document.ID}
             >
               <div className="custom-doc-card-preview">
-                <DocumentPreview document={document} hostname={hostname} sessionToken={sessionToken} large />
+                <a
+                  className="custom-doc-card-preview-link"
+                  href={buildDocumentUrl(hostname, document.ID)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <DocumentPreview document={document} hostname={hostname} sessionToken={sessionToken} large />
+                </a>
                 {hasAemAsset(document) && <AemAssetIcon className="custom-doc-aem-icon-overlay" />}
+                <button
+                  type="button"
+                  className="custom-doc-card-checkbox"
+                  aria-label={`Select ${document.name}`}
+                  aria-pressed={selectedDocumentIds.has(document.ID)}
+                  onClick={() => onToggleDocument(document.ID)}
+                >
+                  <input
+                    checked={selectedDocumentIds.has(document.ID)}
+                    className="custom-doc-checkbox"
+                    readOnly
+                    tabIndex={-1}
+                    type="checkbox"
+                  />
+                </button>
               </div>
-              <div className="custom-doc-card-details">
+              <a
+                className="custom-doc-card-details"
+                href={buildDocumentUrl(hostname, document.ID)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <span className="custom-doc-card-name" title={document.name}>{document.name}</span>
                 <span className="custom-doc-card-type">{(document.ext || 'File').toUpperCase()}</span>
-              </div>
-            </a>
+              </a>
+            </div>
           ))}
         </div>
+      )}
+
+      {parent.objCode === 'PROJ' && parent.ID && (
+        <ProjectUploadDropZone isUploading={isUploading} onUpload={onUploadProjectDocuments} />
       )}
     </section>
   );
@@ -193,10 +366,45 @@ const CustomDocumentsTab = () => {
   const [projectId, setProjectId] = useState('');
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState({ PORT: [], PRGM: [], PROJ: [] });
-  const [viewMode, setViewMode] = useState('list');
+  const [viewMode, setViewMode] = useState(getStoredViewMode);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState(() => new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+  const [openingFrameIo, setOpeningFrameIo] = useState(false);
+  const [frameIoError, setFrameIoError] = useState('');
+
+  const loadDocuments = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const projectData = await fetchProjectDetails(hostname, sessionToken, projectId);
+      const projectParents = [
+        { objCode: 'PORT', ID: projectData.portfolioID || projectData.portfolio?.ID },
+        { objCode: 'PRGM', ID: projectData.programID || projectData.program?.ID },
+        { objCode: 'PROJ', ID: projectId }
+      ];
+      const results = await Promise.all(projectParents.map(async (parent) => (
+        parent.ID ? fetchCustomDocuments(hostname, sessionToken, parent.objCode, parent.ID) : []
+      )));
+
+      setProject(projectData);
+      setDocuments({ PORT: results[0], PRGM: results[1], PROJ: results[2] });
+      setSelectedDocumentIds((currentSelection) => {
+        const availableIds = new Set(results.flat().map((document) => document.ID));
+        return new Set(Array.from(currentSelection).filter((documentId) => availableIds.has(documentId)));
+      });
+    } catch (err) {
+      console.error('Error loading custom documents:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const initialize = async () => {
@@ -229,33 +437,90 @@ const CustomDocumentsTab = () => {
 
   useEffect(() => {
     if (!hostname || !sessionToken || !projectId) return;
-
-    const loadDocuments = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        const projectData = await fetchProjectDetails(hostname, sessionToken, projectId);
-        const parents = [
-          { objCode: 'PORT', ID: projectData.portfolioID || projectData.portfolio?.ID },
-          { objCode: 'PRGM', ID: projectData.programID || projectData.program?.ID },
-          { objCode: 'PROJ', ID: projectId }
-        ];
-        const results = await Promise.all(parents.map(async (parent) => (
-          parent.ID ? fetchCustomDocuments(hostname, sessionToken, parent.objCode, parent.ID) : []
-        )));
-
-        setProject(projectData);
-        setDocuments({ PORT: results[0], PRGM: results[1], PROJ: results[2] });
-      } catch (err) {
-        console.error('Error loading custom documents:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadDocuments();
   }, [hostname, sessionToken, projectId]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    } catch (error) {
+      // Ignore storage failures; view switching still works for the current session.
+    }
+  }, [viewMode]);
+
+  const handleUploadProjectDocuments = async (files) => {
+    if (!files.length || uploading) return;
+
+    try {
+      setUploading(true);
+      setUploadError('');
+      await Promise.all(files.map((file) => uploadProjectDocument(hostname, sessionToken, projectId, file)));
+      await loadDocuments();
+    } catch (err) {
+      console.error('Error uploading project documents:', err);
+      setUploadError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const toggleDocumentSelection = (documentId) => {
+    setSelectedDocumentIds((currentSelection) => {
+      const nextSelection = new Set(currentSelection);
+      if (nextSelection.has(documentId)) {
+        nextSelection.delete(documentId);
+      } else {
+        nextSelection.add(documentId);
+      }
+      return nextSelection;
+    });
+  };
+
+  const toggleSectionDocumentSelection = (documentIds, shouldSelect) => {
+    setSelectedDocumentIds((currentSelection) => {
+      const nextSelection = new Set(currentSelection);
+      documentIds.forEach((documentId) => {
+        if (shouldSelect) {
+          nextSelection.add(documentId);
+        } else {
+          nextSelection.delete(documentId);
+        }
+      });
+      return nextSelection;
+    });
+  };
+
+  const handleDownloadSelectedDocuments = async () => {
+    const documentIds = Array.from(selectedDocumentIds);
+    if (!documentIds.length || downloading) return;
+
+    try {
+      setDownloading(true);
+      setDownloadError('');
+      const download = await bulkDownloadDocuments(hostname, sessionToken, documentIds);
+      saveRemoteFile(download.fileName, download.downloadUrl);
+    } catch (err) {
+      console.error('Error downloading selected documents:', err);
+      setDownloadError(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleOpenInFrameIo = () => {
+    if (!selectedFrameIoUrl || openingFrameIo) return;
+
+    try {
+      setOpeningFrameIo(true);
+      setFrameIoError('');
+      window.open(selectedFrameIoUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Error opening document in Frame.io:', err);
+      setFrameIoError(err.message);
+    } finally {
+      setOpeningFrameIo(false);
+    }
+  };
 
   const filteredDocuments = useMemo(() => {
     const query = searchText.trim().toLowerCase();
@@ -272,6 +537,11 @@ const CustomDocumentsTab = () => {
     { objCode: 'PROJ', label: 'Project', ID: projectId, name: project?.name }
   ];
   const totalDocuments = documents.PORT.length + documents.PRGM.length + documents.PROJ.length;
+  const selectedCount = selectedDocumentIds.size;
+  const selectedProjectDocument = selectedCount === 1
+    ? documents.PROJ.find((document) => selectedDocumentIds.has(document.ID))
+    : null;
+  const selectedFrameIoUrl = getFrameIoUrl(selectedProjectDocument);
 
   return (
     <Provider theme={defaultTheme} colorScheme="light">
@@ -281,14 +551,24 @@ const CustomDocumentsTab = () => {
             <Heading level={1} marginBottom="size-50">Custom Documents</Heading>
             <Text UNSAFE_className="custom-doc-muted">Documents attached to this project, its portfolio, and its program</Text>
           </div>
-          <ButtonGroup aria-label="Document view">
-            <ActionButton isQuiet={viewMode !== 'list'} isSelected={viewMode === 'list'} onPress={() => setViewMode('list')} aria-label="List view">
-              <ViewList />
-            </ActionButton>
-            <ActionButton isQuiet={viewMode !== 'grid'} isSelected={viewMode === 'grid'} onPress={() => setViewMode('grid')} aria-label="Thumbnail view">
-              <ViewGrid />
-            </ActionButton>
-          </ButtonGroup>
+          <div className="custom-doc-header-actions">
+            <Button
+              isDisabled={!selectedCount || downloading}
+              onPress={handleDownloadSelectedDocuments}
+              variant={selectedCount ? 'cta' : 'secondary'}
+            >
+              {downloading ? <ProgressCircle aria-label="Downloading documents" isIndeterminate size="S" /> : <Download />}
+              <Text>{downloading ? 'Downloading' : `Download${selectedCount ? ` (${selectedCount})` : ''}`}</Text>
+            </Button>
+            <ButtonGroup aria-label="Document view">
+              <ActionButton isQuiet={viewMode !== 'list'} isSelected={viewMode === 'list'} onPress={() => setViewMode('list')} aria-label="List view">
+                <ViewList />
+              </ActionButton>
+              <ActionButton isQuiet={viewMode !== 'grid'} isSelected={viewMode === 'grid'} onPress={() => setViewMode('grid')} aria-label="Thumbnail view">
+                <ViewGrid />
+              </ActionButton>
+            </ButtonGroup>
+          </div>
         </div>
 
         <div className="custom-doc-toolbar">
@@ -313,6 +593,18 @@ const CustomDocumentsTab = () => {
           <View padding="size-300" UNSAFE_className="custom-doc-error">Unable to load custom documents: {error}</View>
         )}
 
+        {!loading && uploadError && (
+          <View padding="size-300" UNSAFE_className="custom-doc-error">Unable to upload document: {uploadError}</View>
+        )}
+
+        {!loading && downloadError && (
+          <View padding="size-300" UNSAFE_className="custom-doc-error">Unable to download documents: {downloadError}</View>
+        )}
+
+        {!loading && frameIoError && (
+          <View padding="size-300" UNSAFE_className="custom-doc-error">Unable to open in Frame.io: {frameIoError}</View>
+        )}
+
         {!loading && !error && parents.map((parent) => (
           <CustomDocumentSection
             key={parent.objCode}
@@ -321,6 +613,14 @@ const CustomDocumentsTab = () => {
             viewMode={viewMode}
             hostname={hostname}
             sessionToken={sessionToken}
+            isUploading={uploading}
+            onUploadProjectDocuments={handleUploadProjectDocuments}
+            selectedDocumentIds={selectedDocumentIds}
+            onToggleDocument={toggleDocumentSelection}
+            onToggleSectionDocuments={toggleSectionDocumentSelection}
+            selectedFrameIoUrl={selectedFrameIoUrl}
+            openingFrameIo={openingFrameIo}
+            onOpenInFrameIo={handleOpenInFrameIo}
           />
         ))}
       </main>

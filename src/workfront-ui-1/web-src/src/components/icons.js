@@ -2,7 +2,10 @@ const icon1 = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXH
 
 const icon2 = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACXBIWXMAAAsTAAALEwEAmpwYAAACv0lEQVR4nO2YwWoTURSGf7BLV93ULoRuVCqFEGdsLEQsVjBBIbuKC6nQhavSSuobFF8i6QvUhRQ3UgnYFLppWiNVhKZ10XSlJCFTqQSTuXLlJk7HNJk4dzqTmfPDDyFkcs/57jkn4QAkEolEIpFIJBKJdIae7VevzBW0zMK+dpL8esz+1/MHxyySLzvq8Q9lLZIvvVY/fr8GWck/P9A0O4k3PbunOQ7gL4hSWd0tXbYNYK6gZXjwS4c/2N5JndV11hJ/nanULAOIfaqcGwDhFdsAFkTZ8+TbqabrlpKf/lI97+S5q7YBJEUCxpu3WgG853nZu3DzLUsDYJRbyRCAvE8qIP8kyRrRxCnvzCwGpwIapuSb9jSAuhiCv/SAAnhXqbGfDZ2tVWqeB6BuFln47S4LvcnJA5A02MsAlPcFFlrdajlQANTN4qnkAwcgzMveTwDyPf5c8p73FYBGj5ViTp4ArFIFMGoBu0o6sNbq6xkw22GtZXVq9zWAWIflhuzEPAdgustay5cA5ntYa/kSQMTF4UYAolQBjFog2kczYGdm8Z9gt5++cPxz3OPb39wHEHHJPPnw2mf/A1ANu752yfoagGLa9QUKgNpm1xcoAOE2u75AAQj10PO2AaSV9QcpZf0orWaZLC89zvWc9MtHOWnn/7GSLS6rG3ELALJFqQcLJ14dWU4+sVKUfj53Sskedgegyj/YSyYAbrVA2gO21ALL6kbcjxB48qmb2VhXACQSiUSypgsALgIYBDAMYATAVQBjABQAEwBuC08CuCt8X5j/LX0oHDe83/zcpOH5CfGdY+KMEXHmoIiBx+KoBgBcAjAK4BaAe4bgveIpEduoiJXHLEXXTbfVL46L2AMLICaqQYoGAAwZWmDK4y0wJLMFcIY6DcEbpiF4p80Q5DdkvC3zEOTPNJ/nifHvlD4EfwPid6tVKPmpdAAAAABJRU5ErkJggg==`;
 
+const iconDocument = `data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cpath%20d='M18%208h20l12%2012v36H18z'%20fill='none'%20stroke='%23555'%20stroke-width='4'%20stroke-linejoin='round'/%3E%3Cpath%20d='M38%208v14h12'%20fill='none'%20stroke='%23555'%20stroke-width='4'%20stroke-linejoin='round'/%3E%3Cpath%20d='M25%2032h18M25%2040h18M25%2048h12'%20fill='none'%20stroke='%23555'%20stroke-width='4'%20stroke-linecap='round'/%3E%3C/svg%3E`;
+
 module.exports = {
   icon1,
   icon2,
+  iconDocument,
 };

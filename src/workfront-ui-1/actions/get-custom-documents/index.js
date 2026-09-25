@@ -13,20 +13,28 @@ const PARENT_ID_FIELDS = {
   PROJ: 'projectID'
 };
 
-async function addAemMetadata(hostname, token, document) {
+async function addVersionMetadata(hostname, token, document) {
   if (!document.currentVersionID) {
-    return { ...document, aemurn: null };
+    return { ...document, aemurn: null, externalStorageID: null };
   }
 
   try {
     const version = await callWorkfrontApi(hostname, token, `docv/${document.currentVersionID}`, {
-      fields: 'aemurn'
+      fields: 'aemurn,externalStorageID'
     }, 'unsupported');
     const versionData = version.data || version;
-    return { ...document, aemurn: versionData.aemurn || null };
+    return {
+      ...document,
+      aemurn: versionData.aemurn || null,
+      externalStorageID: versionData.externalStorageID || null,
+      currentVersion: {
+        ...(document.currentVersion || {}),
+        externalStorageID: versionData.externalStorageID || null
+      }
+    };
   } catch (err) {
     console.warn(`Unable to load metadata for document version ${document.currentVersionID}:`, err.message);
-    return { ...document, aemurn: null };
+    return { ...document, aemurn: null, externalStorageID: null };
   }
 }
 
@@ -59,12 +67,13 @@ async function main(params) {
       }))
     }));
     const documents = await Promise.all((data.data || []).map(document => (
-      addAemMetadata(params.hostname, params.token, document)
+      addVersionMetadata(params.hostname, params.token, document)
     )));
     console.log('[Custom document AEM metadata]', JSON.stringify((documents || []).map(document => ({
       documentId: document.ID,
       currentVersionID: document.currentVersionID,
-      aemurn: document.aemurn || null
+      aemurn: document.aemurn || null,
+      externalStorageID: document.externalStorageID || null
     }))));
     return { statusCode: 200, body: { ...data, data: documents } };
   } catch (err) {

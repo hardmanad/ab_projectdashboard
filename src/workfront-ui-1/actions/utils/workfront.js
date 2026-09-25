@@ -1,4 +1,5 @@
 const fetch = require('node-fetch');
+const FormData = require('form-data');
 
 const API_VERSION = 'v20.0';
 
@@ -100,6 +101,87 @@ async function callWorkfrontApi(hostname, token, endpoint, queryParams = {}, api
   return data;
 }
 
+async function callWorkfrontApiPost(hostname, token, endpoint, body = {}, apiVersion = API_VERSION) {
+  const base = normalizeHostname(hostname);
+  const url = new URL(`${base}/attask/api/${apiVersion}/${endpoint}`);
+
+  const requestStartedAt = Date.now();
+  console.log('[Workfront API POST request]', JSON.stringify({
+    endpoint,
+    requestUrl: url.toString()
+  }));
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: buildAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+
+  const text = await response.text();
+  let data;
+  try { data = JSON.parse(text); } catch (e) { data = text; }
+
+  console.log('[Workfront API POST response]', JSON.stringify({
+    endpoint,
+    requestUrl: url.toString(),
+    status: response.status,
+    durationMs: Date.now() - requestStartedAt,
+    responseBody: data
+  }));
+
+  if (!response.ok || data.error) {
+    const err = new Error(data.error?.message || `Workfront API error: ${response.status}`);
+    err.status = response.status;
+    err.data = data;
+    throw err;
+  }
+
+  return data;
+}
+
+async function uploadWorkfrontFile(hostname, token, fileName, contentType, buffer, apiVersion = API_VERSION) {
+  const base = normalizeHostname(hostname);
+  const url = new URL(`${base}/attask/api/${apiVersion}/upload`);
+  const form = new FormData();
+  form.append('uploadedFile', buffer, { filename: fileName, contentType });
+  const authHeaders = buildAuthHeaders(token);
+  delete authHeaders['Content-Type'];
+
+  const requestStartedAt = Date.now();
+  console.log('[Workfront upload request]', JSON.stringify({
+    requestUrl: url.toString(),
+    fileName,
+    contentType,
+    contentLength: buffer.length
+  }));
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: { ...authHeaders, ...form.getHeaders() },
+    body: form
+  });
+
+  const text = await response.text();
+  let data;
+  try { data = JSON.parse(text); } catch (e) { data = text; }
+
+  console.log('[Workfront upload response]', JSON.stringify({
+    requestUrl: url.toString(),
+    status: response.status,
+    durationMs: Date.now() - requestStartedAt,
+    responseBody: data
+  }));
+
+  if (!response.ok || data.error) {
+    const err = new Error(data.error?.message || `Workfront upload error: ${response.status}`);
+    err.status = response.status;
+    err.data = data;
+    throw err;
+  }
+
+  return data;
+}
+
 async function callWorkfrontInternalBinary(hostname, token, endpoint, queryParams = {}) {
   const base = normalizeHostname(hostname);
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -144,4 +226,43 @@ async function callWorkfrontInternalBinary(hostname, token, endpoint, queryParam
   return { buffer, contentType };
 }
 
-module.exports = { validateHostname, validateToken, validateWorkfrontId, validateObjCode, callWorkfrontApi, callWorkfrontInternalBinary };
+async function callWorkfrontAbsoluteBinary(hostname, token, pathOrUrl) {
+  const base = normalizeHostname(hostname);
+  const url = new URL(pathOrUrl.startsWith('http') ? pathOrUrl : `${base}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`);
+
+  if (url.origin !== base) {
+    throw new Error('Invalid Workfront download URL origin');
+  }
+
+  const requestStartedAt = Date.now();
+  console.log('[Workfront binary request]', JSON.stringify({
+    requestUrl: url.toString()
+  }));
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: buildAuthHeaders(token)
+  });
+
+  const contentType = response.headers.get('content-type') || 'application/octet-stream';
+  const buffer = await response.buffer();
+
+  console.log('[Workfront binary response]', JSON.stringify({
+    requestUrl: url.toString(),
+    status: response.status,
+    contentType,
+    contentLength: buffer.length,
+    durationMs: Date.now() - requestStartedAt
+  }));
+
+  if (!response.ok) {
+    const err = new Error(`Workfront binary download error: ${response.status}`);
+    err.status = response.status;
+    err.data = buffer.toString('utf8');
+    throw err;
+  }
+
+  return { buffer, contentType };
+}
+
+module.exports = { validateHostname, validateToken, validateWorkfrontId, validateObjCode, callWorkfrontApi, callWorkfrontApiPost, callWorkfrontInternalBinary, callWorkfrontAbsoluteBinary, uploadWorkfrontFile };

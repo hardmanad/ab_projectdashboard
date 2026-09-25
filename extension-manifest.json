@@ -16,7 +16,7 @@
     },
     {
       "label": "Custom Documents",
-      "id": "custom-documents"
+      "id": "custom-files-panel"
     }
   ],
   "apiVersion": "v20.0",

@@ -56,9 +56,37 @@ body {
   gap: 20px;
 }
 
+.custom-doc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.custom-doc-header-actions button:not(:disabled),
+.custom-doc-section-actions button:not(:disabled) {
+  cursor: pointer;
+}
+
 .custom-doc-toolbar {
   gap: 12px;
   margin: 24px 0 10px;
+}
+
+.custom-doc-section-actions,
+.custom-doc-select-all {
+  display: flex;
+  align-items: center;
+}
+
+.custom-doc-section-actions {
+  gap: 14px;
+}
+
+.custom-doc-select-all {
+  gap: 6px;
+  color: #505050;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .custom-doc-muted,
@@ -132,7 +160,23 @@ body {
 }
 
 .custom-doc-table th:first-child {
+  width: 44px;
+}
+
+.custom-doc-table th:nth-child(2) {
   width: 33%;
+}
+
+.custom-doc-select-column {
+  width: 44px;
+  text-align: center !important;
+}
+
+.custom-doc-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
 }
 
 .custom-doc-table th:last-child,
@@ -191,9 +235,9 @@ body {
 }
 
 .custom-doc-card {
+  position: relative;
   overflow: hidden;
   color: #2c2c2c;
-  text-decoration: none;
   background: #fff;
   border: 1px solid #e1e1e1;
   border-radius: 6px;
@@ -214,6 +258,36 @@ body {
   overflow: hidden;
   background: #f1f1f1;
   border-bottom: 1px solid #e1e1e1;
+}
+
+.custom-doc-card-preview-link {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  text-decoration: none;
+}
+
+.custom-doc-card-checkbox {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d5d5d5;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.custom-doc-card-checkbox .custom-doc-checkbox {
+  pointer-events: none;
 }
 
 .custom-doc-aem-icon-overlay {
@@ -244,6 +318,8 @@ body {
   flex-direction: column;
   justify-content: space-between;
   gap: 8px;
+  color: inherit;
+  text-decoration: none;
 }
 
 .custom-doc-card-name {
@@ -258,6 +334,32 @@ body {
   font-size: 12px;
 }
 
+.custom-doc-upload-zone {
+  display: flex;
+  min-height: 168px;
+  margin-top: 16px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #2c2c2c;
+  font-size: 16px;
+  background: #dff1ff;
+  border: 2px dashed #1473e6;
+  border-radius: 8px;
+  outline: none;
+}
+
+.custom-doc-upload-zone-active {
+  background: #cfe9ff;
+  border-color: #0054b6;
+}
+
+.custom-doc-upload-zone-disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
 @media (max-width: 700px) {
   .custom-doc-page {
     padding: 18px 14px 36px;
@@ -266,6 +368,11 @@ body {
   .custom-doc-page-header,
   .custom-doc-section-heading {
     align-items: flex-start;
+  }
+
+  .custom-doc-header-actions {
+    align-items: flex-end;
+    flex-direction: column;
   }
 
   .custom-doc-toolbar {

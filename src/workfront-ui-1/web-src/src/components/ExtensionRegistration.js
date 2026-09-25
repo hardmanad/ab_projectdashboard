@@ -6,7 +6,7 @@ import { Text } from "@adobe/react-spectrum";
 import { register } from "@adobe/uix-guest";
 import { extensionId } from "./Constants";
 import metadata from '../../../../app-metadata.json';
-import { icon1, icon2 } from './icons';
+import { icon1, icon2, iconDocument } from './icons';
 
 function ExtensionRegistration() {
   const init = async () => {
@@ -38,10 +38,10 @@ function ExtensionRegistration() {
                   icon: icon2,
                 },
                 {
-                  id: 'custom-documents',
-                  url: '/index.html#/custom-documents',
+                  id: 'custom-files-panel',
+                  url: '/index.html#/custom-files',
                   label: 'Custom Documents',
-                  icon: icon2,
+                  icon: iconDocument,
                 },
               ];
             },

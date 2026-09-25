@@ -29,6 +29,10 @@ function App() {
             element={<ProjectTab />}
           />
           <Route
+            exact path="custom-files"
+            element={<CustomDocumentsTab />}
+          />
+          <Route
             exact path="custom-documents"
             element={<CustomDocumentsTab />}
           />

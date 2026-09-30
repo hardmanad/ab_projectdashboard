@@ -17,6 +17,7 @@
     "jszip": "^3.10.2",
     "node-fetch": "^2.6.0",
     "node-html-parser": "^5.4.2-0",
+    "openwhisk": "^3.21.8",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",
     "react-error-boundary": "^1.2.5",

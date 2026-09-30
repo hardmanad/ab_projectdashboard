@@ -139,7 +139,7 @@ const DocumentPreview = ({ document, hostname, sessionToken, large = false }) =>
   );
 };
 
-const ProjectUploadDropZone = ({ isUploading, onUpload }) => {
+const ProjectUploadDropZone = ({ isUploading, onUpload, uploadProgress }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragOver = (event) => {
@@ -172,7 +172,7 @@ const ProjectUploadDropZone = ({ isUploading, onUpload }) => {
       aria-disabled={isUploading}
     >
       {isUploading ? <ProgressCircle aria-label="Uploading documents" isIndeterminate size="S" /> : <UploadToCloud size="L" />}
-      <span>{isUploading ? 'Uploading documents...' : 'Drop files here to upload'}</span>
+      <span role="status" aria-live="polite">{isUploading ? uploadProgress || 'Uploading documents...' : 'Drop files here to upload'}</span>
     </div>
   );
 };
@@ -184,6 +184,8 @@ const CustomDocumentSection = ({
   hostname,
   sessionToken,
   isUploading,
+  uploadError,
+  uploadProgress,
   onUploadProjectDocuments,
   selectedDocumentIds,
   onToggleDocument,
@@ -354,7 +356,12 @@ const CustomDocumentSection = ({
       )}
 
       {parent.objCode === 'PROJ' && parent.ID && (
-        <ProjectUploadDropZone isUploading={isUploading} onUpload={onUploadProjectDocuments} />
+        <>
+          {uploadError && (
+            <div role="alert" className="custom-doc-error">Unable to upload document: {uploadError}</div>
+          )}
+          <ProjectUploadDropZone isUploading={isUploading} onUpload={onUploadProjectDocuments} uploadProgress={uploadProgress} />
+        </>
       )}
     </section>
   );
@@ -372,6 +379,7 @@ const CustomDocumentsTab = () => {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState('');
   const [selectedDocumentIds, setSelectedDocumentIds] = useState(() => new Set());
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
@@ -450,17 +458,24 @@ const CustomDocumentsTab = () => {
 
   const handleUploadProjectDocuments = async (files) => {
     if (!files.length || uploading) return;
-
+    const failures = [];
+    let uploadedCount = 0;
     try {
       setUploading(true);
       setUploadError('');
-      await Promise.all(files.map((file) => uploadProjectDocument(hostname, sessionToken, projectId, file)));
-      await loadDocuments();
-    } catch (err) {
-      console.error('Error uploading project documents:', err);
-      setUploadError(err.message);
+      for (const file of files) {
+        try {
+          await uploadProjectDocument(hostname, sessionToken, projectId, file, setUploadProgress);
+          uploadedCount += 1;
+        } catch (err) {
+          failures.push(`${file.name}: ${err.message}`);
+          setUploadError(failures.join('; '));
+        }
+      }
+      if (uploadedCount) await loadDocuments();
     } finally {
       setUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -593,10 +608,6 @@ const CustomDocumentsTab = () => {
           <View padding="size-300" UNSAFE_className="custom-doc-error">Unable to load custom documents: {error}</View>
         )}
 
-        {!loading && uploadError && (
-          <View padding="size-300" UNSAFE_className="custom-doc-error">Unable to upload document: {uploadError}</View>
-        )}
-
         {!loading && downloadError && (
           <View padding="size-300" UNSAFE_className="custom-doc-error">Unable to download documents: {downloadError}</View>
         )}
@@ -614,6 +625,8 @@ const CustomDocumentsTab = () => {
             hostname={hostname}
             sessionToken={sessionToken}
             isUploading={uploading}
+            uploadError={uploadError}
+            uploadProgress={uploadProgress}
             onUploadProjectDocuments={handleUploadProjectDocuments}
             selectedDocumentIds={selectedDocumentIds}
             onToggleDocument={toggleDocumentSelection}

@@ -129,8 +129,8 @@ async function callWorkfrontApiPost(hostname, token, endpoint, body = {}, apiVer
     responseBody: data
   }));
 
-  if (!response.ok || data.error) {
-    const err = new Error(data.error?.message || `Workfront API error: ${response.status}`);
+  if (!response.ok || data?.error) {
+    const err = new Error(data?.error?.message || data?.error || data?.message || (typeof data === 'string' && data) || `Workfront API error: ${response.status}`);
     err.status = response.status;
     err.data = data;
     throw err;
@@ -139,11 +139,11 @@ async function callWorkfrontApiPost(hostname, token, endpoint, body = {}, apiVer
   return data;
 }
 
-async function uploadWorkfrontFile(hostname, token, fileName, contentType, buffer, apiVersion = API_VERSION) {
+async function uploadWorkfrontFile(hostname, token, fileName, contentType, buffer, apiVersion = API_VERSION, contentLength = buffer.length) {
   const base = normalizeHostname(hostname);
   const url = new URL(`${base}/attask/api/${apiVersion}/upload`);
   const form = new FormData();
-  form.append('uploadedFile', buffer, { filename: fileName, contentType });
+  form.append('uploadedFile', buffer, { filename: fileName, contentType, knownLength: contentLength });
   const authHeaders = buildAuthHeaders(token);
   delete authHeaders['Content-Type'];
 
@@ -152,12 +152,12 @@ async function uploadWorkfrontFile(hostname, token, fileName, contentType, buffe
     requestUrl: url.toString(),
     fileName,
     contentType,
-    contentLength: buffer.length
+    contentLength
   }));
 
   const response = await fetch(url.toString(), {
     method: 'POST',
-    headers: { ...authHeaders, ...form.getHeaders() },
+    headers: { ...authHeaders, ...form.getHeaders(), 'Content-Length': String(form.getLengthSync()) },
     body: form
   });
 
@@ -172,8 +172,8 @@ async function uploadWorkfrontFile(hostname, token, fileName, contentType, buffe
     responseBody: data
   }));
 
-  if (!response.ok || data.error) {
-    const err = new Error(data.error?.message || `Workfront upload error: ${response.status}`);
+  if (!response.ok || data?.error) {
+    const err = new Error(data?.error?.message || data?.error || data?.message || (typeof data === 'string' && data) || `Workfront upload error: ${response.status}`);
     err.status = response.status;
     err.data = data;
     throw err;

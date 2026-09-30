@@ -1,63 +1,82 @@
-const {
-  validateHostname,
-  validateToken,
-  validateWorkfrontId,
-  callWorkfrontApiPost,
-  uploadWorkfrontFile
-} = require('../utils/workfront');
-
-function validateFileName(fileName) {
-  if (!fileName || typeof fileName !== 'string') return 'Missing required parameter: fileName';
-  if (fileName.includes('/') || fileName.includes('\\')) return 'Invalid fileName: path separators are not allowed';
-  return null;
-}
-
-function validateFileContent(fileContent) {
-  if (!fileContent || typeof fileContent !== 'string') return 'Missing required parameter: fileContent';
-  return null;
-}
+const { performance } = require('perf_hooks');
+const openwhisk = require('openwhisk');
+const { callWorkfrontApi } = require('../utils/workfront');
+const { transferJob } = require('../transfer-project-document');
+const { init, INLINE_FILE_SIZE_LIMIT, validateRequest, paths, writeJob, claimJob, authorizedJob, prepareJob, logUploadTiming, timedUploadPhase } = require('../utils/documentUploads');
 
 async function main(params) {
-  const hostnameErr = validateHostname(params.hostname);
-  if (hostnameErr) return { statusCode: 400, body: { error: hostnameErr } };
-
-  const tokenErr = validateToken(params.token);
-  if (tokenErr) return { statusCode: 400, body: { error: tokenErr } };
-
-  const projectIdErr = validateWorkfrontId(params.projectId, 'projectId');
-  if (projectIdErr) return { statusCode: 400, body: { error: projectIdErr } };
-
-  const fileNameErr = validateFileName(params.fileName);
-  if (fileNameErr) return { statusCode: 400, body: { error: fileNameErr } };
-
-  const fileContentErr = validateFileContent(params.fileContent);
-  if (fileContentErr) return { statusCode: 400, body: { error: fileContentErr } };
-
+  const requestStartedAt = performance.now();
+  const validationError = validateRequest(params);
+  if (validationError) return { statusCode: 400, body: { error: validationError } };
+  let timingJob = { uploadId: params.uploadId, projectId: params.projectId, fileSize: params.fileSize };
   try {
-    const fileBuffer = Buffer.from(params.fileContent, 'base64');
-    if (!fileBuffer.length) return { statusCode: 400, body: { error: 'Uploaded file is empty' } };
-
-    const uploadData = await uploadWorkfrontFile(
-      params.hostname,
-      params.token,
-      params.fileName,
-      params.contentType || 'application/octet-stream',
-      fileBuffer
-    );
-    const handle = uploadData.data?.handle || uploadData.handle;
-    if (!handle) throw new Error('Workfront upload did not return a file handle');
-
-    const documentData = await callWorkfrontApiPost(params.hostname, params.token, 'document', {
-      name: params.fileName,
-      handle,
-      docObjCode: 'PROJ',
-      objID: params.projectId
-    });
-
-    return { statusCode: 200, body: documentData };
-  } catch (err) {
-    console.error('upload-project-document error:', err.message);
-    return { statusCode: err.status || 500, body: { error: err.message } };
+    const files = await init();
+    const filesInitMs = performance.now() - requestStartedAt;
+    if (params.operation === 'prepare') {
+      const accessStartedAt = performance.now();
+      await callWorkfrontApi(params.hostname, params.token, `project/${params.projectId}`, { fields: 'ID' });
+      const projectAccessMs = performance.now() - accessStartedAt;
+      const stagingStartedAt = performance.now();
+      const prepared = await prepareJob(files, params);
+      timingJob.uploadId = prepared.uploadId;
+      logUploadTiming(timingJob, 'control_files_init', filesInitMs);
+      logUploadTiming(timingJob, 'project_access', projectAccessMs);
+      logUploadTiming(timingJob, 'prepare_staging', performance.now() - stagingStartedAt);
+      logUploadTiming(timingJob, 'prepare_total', performance.now() - requestStartedAt);
+      return { statusCode: 200, body: prepared };
+    }
+    if (!['start', 'status', 'timings'].includes(params.operation)) return { statusCode: 400, body: { error: 'Invalid upload operation' } };
+    const job = await authorizedJob(files, params);
+    timingJob = job;
+    if (params.operation === 'timings') {
+      const phases = ['prepare', 'storage_upload', 'start', 'polling', 'total'];
+      const entries = params.timings && typeof params.timings === 'object' && !Array.isArray(params.timings) ? Object.entries(params.timings) : [];
+      if (!entries.length || !Number.isSafeInteger(params.pollCount) || params.pollCount < 0 || params.pollCount > 10000 || entries.some(([phase, timing]) => !phases.includes(phase) || !timing || !Number.isFinite(timing.durationMs) || timing.durationMs < 0 || timing.durationMs > 24 * 60 * 60 * 1000 || !['success', 'error'].includes(timing.outcome))) {
+        return { statusCode: 400, body: { error: 'Invalid browser upload timings' } };
+      }
+      for (const [phase, timing] of entries) logUploadTiming({ ...job, pollCount: params.pollCount }, `browser_${phase}`, timing.durationMs, timing.outcome, 'browser');
+      return { statusCode: 200, body: { recorded: true } };
+    }
+    if (params.operation === 'start' && job.status === 'staging') {
+      const props = await files.getProperties(paths(job.uploadId).file);
+      if (props.contentLength !== job.fileSize) return { statusCode: 400, body: { error: 'Staged file size does not match the selected file' } };
+      if (!await claimJob(files, job.uploadId, 'start')) {
+        const current = await authorizedJob(files, params);
+        return { statusCode: 202, body: { uploadId: current.uploadId, status: current.status, document: current.document, error: current.error } };
+      }
+      logUploadTiming(job, 'start_setup', performance.now() - requestStartedAt);
+      job.status = 'queued';
+      job.transferMode = job.fileSize <= INLINE_FILE_SIZE_LIMIT ? 'inline' : 'async';
+      job.startedAt = Date.now();
+      await timedUploadPhase(job, 'queued_status_write', () => writeJob(files, job));
+      if (job.transferMode === 'inline') {
+        const result = await transferJob(files, job, params, { mode: 'inline' });
+        logUploadTiming(job, 'start_total', performance.now() - requestStartedAt, result.status === 'failed' ? 'error' : 'success');
+        return { statusCode: 200, body: { uploadId: job.uploadId, status: result.status, document: result.document, error: result.error } };
+      }
+      try {
+        await timedUploadPhase(job, 'worker_invoke', () => openwhisk().actions.invoke({
+          name: 'workfront-ui-1/transfer-project-document',
+          blocking: false,
+          result: false,
+          params: { hostname: params.hostname, token: params.token, projectId: params.projectId, uploadId: job.uploadId }
+        }));
+      } catch (error) {
+        job.status = 'failed';
+        job.error = `Unable to queue Workfront transfer: ${error.message}`;
+        await writeJob(files, job);
+        throw error;
+      }
+      logUploadTiming(job, 'start_total', performance.now() - requestStartedAt);
+      return { statusCode: 202, body: { uploadId: job.uploadId, status: 'queued' } };
+    }
+    if (['queued', 'transferring'].includes(job.status) && Date.now() - job.startedAt > 12 * 60 * 1000) {
+      return { statusCode: 200, body: { uploadId: job.uploadId, status: 'failed', error: 'Workfront transfer timed out. Check Project Documents before retrying to avoid duplicates.' } };
+    }
+    return { statusCode: 200, body: { uploadId: job.uploadId, status: job.status, error: job.error, document: job.document } };
+  } catch (error) {
+    if (['prepare', 'start'].includes(params.operation)) logUploadTiming(timingJob, `${params.operation}_total`, performance.now() - requestStartedAt, 'error');
+    return { statusCode: error.status || 400, body: { error: error.message } };
   }
 }
 

@@ -126,6 +126,12 @@ body {
 
 .custom-doc-error {
   color: #b40000;
+  overflow-wrap: anywhere;
+}
+
+.custom-doc-upload-zone span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .custom-doc-table-wrap {

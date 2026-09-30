@@ -42,14 +42,18 @@ async function actionWebInvoke (actionUrl, headers = {}, params = {}, options = 
   const response = await fetch(actionUrl, fetchConfig)
 
   let content = await response.text()
-  
-  if (!response.ok) {
-    return JSON.parse(content)
-  }
   try {
     content = JSON.parse(content)
   } catch (e) {
     // response is not json
+  }
+  if (!response.ok) {
+    const detail = typeof content === 'string'
+      ? content
+      : content?.error?.message || content?.error || content?.message
+    const error = new Error(`HTTP ${response.status}: ${typeof detail === 'string' && detail ? detail : response.statusText || 'Request failed'}`)
+    error.status = response.status
+    throw error
   }
   return content
 }

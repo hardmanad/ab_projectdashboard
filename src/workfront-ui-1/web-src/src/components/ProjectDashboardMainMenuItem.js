@@ -11,6 +11,7 @@ import {
   ToastQueue
 } from '@adobe/react-spectrum';
 import { attach } from '@adobe/uix-guest';
+import { startContextDiagnostics } from '../utils/contextDiagnostics';
 import { extensionId } from './Constants';
 import { fetchProjects, fetchStatuses } from '../services/workfrontApi';
 import StatusFilter from './StatusFilter';
@@ -41,10 +42,15 @@ const ProjectDashboardMainMenuItem = () => {
 
   // Initialize UIX connection
   useEffect(() => {
+    let disposed = false;
+    let stopDiagnostics = () => {};
+    let stopContextUpdates = () => {};
     const init = async () => {
       try {
         // Attach to the host application
         const connection = await attach({ id: extensionId });
+        if (disposed) return;
+        stopDiagnostics = startContextDiagnostics(connection, 'project-dashboard');
         setGuestConnection(connection);
 
         // console.log('UIX Connection established');
@@ -56,6 +62,7 @@ const ProjectDashboardMainMenuItem = () => {
         
         // Wait a bit for the context to be populated
         await new Promise(resolve => setTimeout(resolve, 500));
+        if (disposed) return;
         
         // Try to get context values using the get method
         let hostFromContext, tokenFromContext;
@@ -107,18 +114,16 @@ const ProjectDashboardMainMenuItem = () => {
         setConnectionReady(true);
 
         // Listen for context changes - this might be how we get the initial context too!
-        connection.addEventListener('contextchange', (event) => {
+        const onContextChange = (event) => {
           // console.log('Context change event received:', event);
           // console.log('Event context:', event.context);
           
           let newHost, newToken;
+          const changedContext = event.detail?.context;
           
-          if (event.context && typeof event.context.get === 'function') {
-            newHost = event.context.get('hostname') || event.context.get('host');
-            newToken = event.context.get('sessionToken') || event.context.get('token');
-          } else if (event.context) {
-            newHost = event.context.hostname || event.context.host;
-            newToken = event.context.sessionToken || event.context.token;
+          if (changedContext) {
+            newHost = changedContext.hostname || changedContext.host;
+            newToken = changedContext.sessionToken || changedContext.token;
           }
           
           // console.log('New host from event:', newHost);
@@ -132,15 +137,23 @@ const ProjectDashboardMainMenuItem = () => {
           if (newToken) {
             setSessionToken(newToken);
           }
-        });
+        };
+        connection.addEventListener('contextchange', onContextChange);
+        stopContextUpdates = () => connection.removeEventListener('contextchange', onContextChange);
       } catch (err) {
-        console.error('Error initializing UIX connection:', err);
+        if (disposed) return;
+        console.error('Error initializing UIX connection.');
         setError('Failed to connect to Workfront');
         ToastQueue.negative('Failed to connect to Workfront', { timeout: 5000 });
       }
     };
 
     init();
+    return () => {
+      disposed = true;
+      stopDiagnostics();
+      stopContextUpdates();
+    };
   }, []);
 
   // Load projects when connection is ready or filters change

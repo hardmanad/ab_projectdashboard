@@ -121,15 +121,13 @@ test('files above the inline limit still enqueue the asynchronous worker', async
   expect(await transfer({ ...context, uploadId })).toEqual({ status: 'succeeded' });
 });
 
-test('the inline size boundary transfers directly and logs inline rather than worker scheduling', async () => {
+test('the inline size boundary transfers directly without diagnostic logging', async () => {
   const uploadId = await prepared(uploads.INLINE_FILE_SIZE_LIMIT);
   const log = jest.spyOn(console, 'log').mockImplementation(() => {});
   try {
     expect((await control({ ...context, operation: 'start', uploadId })).body.status).toBe('succeeded');
     expect(mockInvoke).not.toHaveBeenCalled();
-    const entries = log.mock.calls.map(([message]) => JSON.parse(message));
-    expect(entries).toEqual(expect.arrayContaining([expect.objectContaining({ phase: 'inline_total', transferMode: 'inline' })]));
-    expect(entries.some(entry => entry.phase === 'queue_to_worker_entry' || entry.phase === 'worker_invoke')).toBe(false);
+    expect(log).not.toHaveBeenCalled();
   } finally { log.mockRestore(); }
 });
 
@@ -173,67 +171,23 @@ test('preserves the actual Workfront transfer error in polled status', async () 
   expect(mockStore.has(uploads.paths(uploadId).file)).toBe(true);
 });
 
-test('worker timing logs correlate phases without file names, credentials, or signed URLs', async () => {
+test('the asynchronous worker completes without diagnostic logging', async () => {
   const uploadId = await prepared(uploads.INLINE_FILE_SIZE_LIMIT + 1);
   await control({ ...context, operation: 'start', uploadId });
   const log = jest.spyOn(console, 'log').mockImplementation(() => {});
   try {
     await transfer({ ...context, uploadId });
-    const entries = log.mock.calls.map(([message]) => JSON.parse(message));
-    expect(entries.map(entry => entry.phase)).toEqual(expect.arrayContaining(['queue_to_worker_entry', 'worker_setup', 'snapshot_copy', 'snapshot_verify', 'stream_open', 'workfront_upload', 'document_create', 'completion_status_write', 'cleanup', 'worker_total']));
-    for (const entry of entries) {
-      expect(entry).toMatchObject({ event: 'WF_DOCUMENT_UPLOAD_TIMING', uploadId, projectId: context.projectId, fileSize: uploads.INLINE_FILE_SIZE_LIMIT + 1, source: 'runtime', outcome: 'success' });
-      expect(entry.durationMs).toBeGreaterThanOrEqual(0);
-    }
-    expect(JSON.stringify(entries)).not.toContain(context.token);
-    expect(JSON.stringify(entries)).not.toContain('test.pdf');
-    expect(JSON.stringify(entries)).not.toContain('https://');
+    expect(log).not.toHaveBeenCalled();
+    expect((await control({ ...context, operation: 'status', uploadId })).body.status).toBe('succeeded');
   } finally { log.mockRestore(); }
 });
 
-test('failed worker phase and total are logged with error outcome', async () => {
-  const uploadId = await prepared(uploads.INLINE_FILE_SIZE_LIMIT + 1);
-  await control({ ...context, operation: 'start', uploadId });
-  workfront.uploadWorkfrontFile.mockRejectedValueOnce(new Error('Workfront upload rejected'));
-  const log = jest.spyOn(console, 'log').mockImplementation(() => {});
-  try {
-    await transfer({ ...context, uploadId });
-    const entries = log.mock.calls.map(([message]) => JSON.parse(message));
-    expect(entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ phase: 'workfront_upload', outcome: 'error' }),
-      expect.objectContaining({ phase: 'worker_total', outcome: 'error' })
-    ]));
-  } finally { log.mockRestore(); }
-});
-
-test('authorized browser timing reports use the same upload ID and do not mutate the job', async () => {
+test('the retired diagnostic reporting operation is rejected', async () => {
   const uploadId = await prepared();
-  const originalJob = await uploads.readJob(mockFiles, uploadId);
-  const log = jest.spyOn(console, 'log').mockImplementation(() => {});
-  try {
-    const response = await control({ ...context, operation: 'timings', uploadId, pollCount: 3, timings: {
-      storage_upload: { durationMs: 1234.5, outcome: 'success' },
-      total: { durationMs: 5432.1, outcome: 'error' }
-    } });
-    expect(response.body).toEqual({ recorded: true });
-    expect(log.mock.calls.map(([message]) => JSON.parse(message))).toEqual([
-      expect.objectContaining({ event: 'WF_DOCUMENT_UPLOAD_TIMING', uploadId, source: 'browser', phase: 'browser_storage_upload', durationMs: 1235, outcome: 'success', pollCount: 3 }),
-      expect.objectContaining({ event: 'WF_DOCUMENT_UPLOAD_TIMING', uploadId, source: 'browser', phase: 'browser_total', durationMs: 5432, outcome: 'error', pollCount: 3 })
-    ]);
-    expect(await uploads.readJob(mockFiles, uploadId)).toEqual(originalJob);
-  } finally { log.mockRestore(); }
+  expect((await control({ ...context, operation: 'timings', uploadId })).statusCode).toBe(400);
 });
 
-test('timing reports reject other sessions, arbitrary phases, and invalid durations', async () => {
-  const uploadId = await prepared();
-  const params = { ...context, operation: 'timings', uploadId, pollCount: 0, timings: { total: { durationMs: 1, outcome: 'success' } } };
-  expect((await control({ ...params, token: 'another-session' })).statusCode).toBe(403);
-  expect((await control({ ...params, timings: { arbitrary: { durationMs: 1, outcome: 'success' } } })).statusCode).toBe(400);
-  expect((await control({ ...params, timings: { total: { durationMs: -1, outcome: 'success' } } })).statusCode).toBe(400);
-  expect((await control({ ...params, pollCount: -1 })).statusCode).toBe(400);
-});
-
-test('status polling does not emit a timing log for every request', async () => {
+test('status polling does not emit diagnostic logs', async () => {
   const uploadId = await prepared();
   const log = jest.spyOn(console, 'log').mockImplementation(() => {});
   try {
@@ -315,8 +269,7 @@ test('1.1 MB browser upload uses raw storage bytes, metadata-only actions, and s
   const api = frontendModule('services/workfrontApi.js', { require: name => name === '../utils' ? { __esModule: true, default: action } : {}, fetch: storage });
   await expect(api.uploadProjectDocument(context.hostname, context.token, context.projectId, file)).resolves.toEqual({ ID: 'document' });
   expect(storage).toHaveBeenCalledWith('https://storage.invalid/file', expect.objectContaining({ method: 'PUT', body: file }));
-  expect(action.mock.calls.map(call => call[2].operation)).toEqual(['prepare', 'start', 'status', 'timings']);
-  expect(action.mock.calls[3][2]).toMatchObject({ pollCount: 1, timings: { total: { outcome: 'success' }, storage_upload: { outcome: 'success' } } });
+  expect(action.mock.calls.map(call => call[2].operation)).toEqual(['prepare', 'start', 'status']);
   expect(action.mock.calls.every(call => !('fileContent' in call[2]))).toBe(true);
 });
 
@@ -324,8 +277,7 @@ test('storage HTTP failures prevent transfer and preserve response detail', asyn
   const action = jest.fn(async () => ({ uploadId: 'upload', uploadUrl: 'https://storage.invalid/file' }));
   const api = frontendModule('services/workfrontApi.js', { require: name => name === '../utils' ? { __esModule: true, default: action } : {}, fetch: async () => ({ ok: false, status: 403, text: async () => '{"message":"Signature expired"}' }) });
   await expect(api.uploadProjectDocument(context.hostname, context.token, context.projectId, { name: 'test.pdf', size: 1100000 })).rejects.toThrow('Storage upload HTTP 403: Signature expired');
-  expect(action.mock.calls.map(call => call[2].operation)).toEqual(['prepare', 'timings']);
-  expect(action.mock.calls[1][2]).toMatchObject({ pollCount: 0, timings: { total: { outcome: 'error' }, storage_upload: { outcome: 'error' } } });
+  expect(action.mock.calls.map(call => call[2].operation)).toEqual(['prepare']);
 });
 
 test('inline browser completion returns the document without polling', async () => {
@@ -336,8 +288,7 @@ test('inline browser completion returns the document without polling', async () 
   });
   const api = frontendModule('services/workfrontApi.js', { require: name => name === '../utils' ? { __esModule: true, default: action } : {}, fetch: async () => ({ ok: true }) });
   await expect(api.uploadProjectDocument(context.hostname, context.token, context.projectId, { name: 'test.pdf', size: 1100000 })).resolves.toEqual({ ID: 'document' });
-  expect(action.mock.calls.map(call => call[2].operation)).toEqual(['prepare', 'start', 'timings']);
-  expect(action.mock.calls[2][2]).toMatchObject({ pollCount: 0, timings: { total: { outcome: 'success' }, start: { outcome: 'success' } } });
+  expect(action.mock.calls.map(call => call[2].operation)).toEqual(['prepare', 'start']);
 });
 
 test.each([
@@ -383,18 +334,6 @@ test('a definite start authorization failure is not retried or polled', async ()
   const api = frontendModule('services/workfrontApi.js', { require: name => name === '../utils' ? { __esModule: true, default: action } : {}, fetch: async () => ({ ok: true }) });
   await expect(api.uploadProjectDocument(context.hostname, context.token, context.projectId, { name: 'test.pdf', size: 1100000 })).rejects.toThrow('Forbidden');
   expect(action.mock.calls.some(call => call[2].operation === 'status')).toBe(false);
-});
-
-test('a failed or pending timing report cannot delay or fail a successful upload', async () => {
-  for (const report of [() => Promise.reject(new Error('Telemetry unavailable')), () => new Promise(() => {})]) {
-    const action = jest.fn(async (url, headers, params) => {
-      if (params.operation === 'prepare') return { uploadId: 'upload', uploadUrl: 'https://storage.invalid/file' };
-      if (params.operation === 'timings') return report();
-      return { status: 'succeeded', document: { ID: 'document' } };
-    });
-    const api = frontendModule('services/workfrontApi.js', { require: name => name === '../utils' ? { __esModule: true, default: action } : {}, fetch: async () => ({ ok: true }) });
-    await expect(api.uploadProjectDocument(context.hostname, context.token, context.projectId, { name: 'test.pdf', size: 1100000 })).resolves.toEqual({ ID: 'document' });
-  }
 });
 
 test('renders upload error immediately before the Project drop zone', () => {

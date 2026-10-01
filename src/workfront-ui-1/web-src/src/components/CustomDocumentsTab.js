@@ -23,6 +23,7 @@ import UploadToCloud from '@spectrum-icons/workflow/UploadToCloud';
 import ViewGrid from '@spectrum-icons/workflow/ViewGrid';
 import ViewList from '@spectrum-icons/workflow/ViewList';
 import { attach } from '@adobe/uix-guest';
+import { startContextDiagnostics } from '../utils/contextDiagnostics';
 import { extensionId } from './Constants';
 import { bulkDownloadDocuments, fetchCustomDocuments, fetchDocumentThumbnail, fetchProjectDetails, uploadProjectDocument } from '../services/workfrontApi';
 import { formatShortDate } from '../utils/dateFormatter';
@@ -415,10 +416,15 @@ const CustomDocumentsTab = () => {
   };
 
   useEffect(() => {
+    let disposed = false;
+    let stopDiagnostics = () => {};
     const initialize = async () => {
       try {
         const connection = await attach({ id: extensionId });
+        if (disposed) return;
+        stopDiagnostics = startContextDiagnostics(connection, 'custom-documents');
         await new Promise(resolve => setTimeout(resolve, 500));
+        if (disposed) return;
         const context = connection.sharedContext;
         const auth = context.get('auth');
         const contextHostname = context.get('hostname');
@@ -434,13 +440,18 @@ const CustomDocumentsTab = () => {
         setProjectId(contextProjectId);
         connection.host?.renderDone?.();
       } catch (err) {
-        console.error('Error initializing Custom Documents:', err);
+        if (disposed) return;
+        console.error('Error initializing Custom Documents.');
         setError(err.message);
         setLoading(false);
       }
     };
 
     initialize();
+    return () => {
+      disposed = true;
+      stopDiagnostics();
+    };
   }, []);
 
   useEffect(() => {

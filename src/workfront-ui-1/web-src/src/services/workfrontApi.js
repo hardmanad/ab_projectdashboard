@@ -204,105 +204,64 @@ export async function fetchDocumentThumbnail(hostname, sessionToken, documentId,
 export async function uploadProjectDocument(hostname, sessionToken, projectId, file, onProgress = () => {}) {
   if (!file.size || file.size > 100 * 1024 * 1024) throw new Error('Files must be nonempty and no larger than 100 MB');
   const context = { hostname, token: sessionToken, projectId };
-  const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
-  const startedAt = now();
-  const timings = {};
-  let prepared;
-  let pollCount = 0;
-  let outcome = 'error';
   const isUncertainResponse = error => error.name === 'TypeError' || error.name === 'AbortError' || error.status === 408 || (error.status >= 500 && error.status <= 599);
-  const measure = async (phase, operation) => {
-    const phaseStartedAt = now();
-    let phaseOutcome = 'error';
-    try {
-      const result = await operation();
-      phaseOutcome = 'success';
-      return result;
-    } finally {
-      timings[phase] = { durationMs: now() - phaseStartedAt, outcome: phaseOutcome };
-    }
-  };
+  onProgress(`Uploading ${file.name}...`);
+  const prepared = await callAction('upload-project-document', {
+    ...context,
+    operation: 'prepare',
+    fileName: file.name,
+    contentType: file.type || 'application/octet-stream',
+    fileSize: file.size
+  });
+  let staged;
   try {
-    onProgress(`Uploading ${file.name}...`);
-    prepared = await measure('prepare', () => callAction('upload-project-document', {
-      ...context,
-      operation: 'prepare',
-      fileName: file.name,
-      contentType: file.type || 'application/octet-stream',
-      fileSize: file.size
-    }));
-    await measure('storage_upload', async () => {
-      let staged;
-      try {
-        staged = await fetch(prepared.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
-          body: file
-        });
-      } catch (error) {
-        throw new Error(`Storage upload failed: ${error.message}. The browser could not access the storage response; check connectivity and storage CORS.`);
-      }
-      if (!staged.ok) {
-        const text = await staged.text();
-        let detail = text;
-        try {
-          const body = JSON.parse(text);
-          detail = body.error?.message || body.error || body.message || text;
-        } catch (error) {
-          if (text.trim().startsWith('<')) {
-            detail = new DOMParser().parseFromString(text, 'text/xml').querySelector('Message')?.textContent || text;
-          }
-        }
-        throw new Error(`Storage upload HTTP ${staged.status}: ${typeof detail === 'string' && detail ? detail : staged.statusText || 'Upload failed'}`);
-      }
+    staged = await fetch(prepared.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
+      body: file
     });
-    onProgress(`Attaching ${file.name} to Workfront...`);
-    const params = { ...context, uploadId: prepared.uploadId };
-    let started;
+  } catch (error) {
+    throw new Error(`Storage upload failed: ${error.message}. The browser could not access the storage response; check connectivity and storage CORS.`);
+  }
+  if (!staged.ok) {
+    const text = await staged.text();
+    let detail = text;
     try {
-      started = await measure('start', () => callAction('upload-project-document', { ...params, operation: 'start' }));
+      const body = JSON.parse(text);
+      detail = body.error?.message || body.error || body.message || text;
+    } catch (error) {
+      if (text.trim().startsWith('<')) {
+        detail = new DOMParser().parseFromString(text, 'text/xml').querySelector('Message')?.textContent || text;
+      }
+    }
+    throw new Error(`Storage upload HTTP ${staged.status}: ${typeof detail === 'string' && detail ? detail : staged.statusText || 'Upload failed'}`);
+  }
+  onProgress(`Attaching ${file.name} to Workfront...`);
+  const params = { ...context, uploadId: prepared.uploadId };
+  let started;
+  try {
+    started = await callAction('upload-project-document', { ...params, operation: 'start' });
+  } catch (error) {
+    if (!isUncertainResponse(error)) throw error;
+    onProgress(`Checking Workfront transfer status for ${file.name}...`);
+  }
+  if (started?.status === 'succeeded') return started.document;
+  if (started?.status === 'failed') throw new Error(started.error || 'Workfront transfer failed');
+  const deadline = Date.now() + 12 * 60 * 1000;
+  while (Date.now() < deadline) {
+    let status;
+    try {
+      status = await callAction('upload-project-document', { ...params, operation: 'status' });
     } catch (error) {
       if (!isUncertainResponse(error)) throw error;
-      onProgress(`Checking Workfront transfer status for ${file.name}...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      continue;
     }
-    if (started?.status === 'succeeded') {
-      outcome = 'success';
-      return started.document;
-    }
-    if (started?.status === 'failed') throw new Error(started.error || 'Workfront transfer failed');
-    return await measure('polling', async () => {
-      const deadline = Date.now() + 12 * 60 * 1000;
-      while (Date.now() < deadline) {
-        pollCount += 1;
-        let status;
-        try {
-          status = await callAction('upload-project-document', { ...params, operation: 'status' });
-        } catch (error) {
-          if (!isUncertainResponse(error)) throw error;
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          continue;
-        }
-        if (status.status === 'succeeded') {
-          outcome = 'success';
-          return status.document;
-        }
-        if (status.status === 'failed') throw new Error(status.error || 'Workfront transfer failed');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      throw new Error('Workfront transfer is taking longer than expected. Check Project Documents before retrying to avoid duplicates.');
-    });
-  } finally {
-    timings.total = { durationMs: now() - startedAt, outcome };
-    if (prepared?.uploadId) {
-      void callAction('upload-project-document', {
-        ...context,
-        operation: 'timings',
-        uploadId: prepared.uploadId,
-        timings,
-        pollCount
-      }).catch(() => {});
-    }
+    if (status.status === 'succeeded') return status.document;
+    if (status.status === 'failed') throw new Error(status.error || 'Workfront transfer failed');
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
+  throw new Error('Workfront transfer is taking longer than expected. Check Project Documents before retrying to avoid duplicates.');
 }
 
 /**

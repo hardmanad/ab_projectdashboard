@@ -1,5 +1,4 @@
 const { createHash, randomUUID } = require('crypto');
-const { performance } = require('perf_hooks');
 const { init } = require('@adobe/aio-lib-files');
 const fetch = require('node-fetch');
 const { validateHostname, validateToken, validateWorkfrontId } = require('./workfront');
@@ -8,34 +7,6 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const INLINE_FILE_SIZE_LIMIT = 5 * 1024 * 1024;
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 const PREFIX = 'document-uploads/';
-
-function logUploadTiming(job, phase, durationMs, outcome = 'success', source = 'runtime') {
-  console.log(JSON.stringify({
-    event: 'WF_DOCUMENT_UPLOAD_TIMING',
-    uploadId: job.uploadId || null,
-    projectId: job.projectId,
-    fileSize: Number.isSafeInteger(job.fileSize) ? job.fileSize : undefined,
-    transferMode: job.transferMode,
-    pollCount: Number.isSafeInteger(job.pollCount) ? job.pollCount : undefined,
-    phase,
-    durationMs: Math.round(Math.max(0, durationMs)),
-    outcome,
-    source,
-    activationId: process.env.__OW_ACTIVATION_ID || null
-  }));
-}
-
-async function timedUploadPhase(job, phase, operation) {
-  const startedAt = performance.now();
-  try {
-    const result = await operation();
-    logUploadTiming(job, phase, performance.now() - startedAt);
-    return result;
-  } catch (error) {
-    logUploadTiming(job, phase, performance.now() - startedAt, 'error');
-    throw error;
-  }
-}
 
 function validateRequest(params) {
   return validateHostname(params.hostname) || validateToken(params.token) || validateWorkfrontId(params.projectId, 'projectId');
@@ -115,4 +86,4 @@ async function prepareJob(files, params) {
   return { uploadId: job.uploadId, uploadUrl, maxFileSize: MAX_FILE_SIZE };
 }
 
-module.exports = { init, MAX_FILE_SIZE, INLINE_FILE_SIZE_LIMIT, UPLOAD_TTL_MS, PREFIX, validateRequest, paths, readJob, writeJob, claimJob, authorizedJob, prepareJob, logUploadTiming, timedUploadPhase };
+module.exports = { init, MAX_FILE_SIZE, INLINE_FILE_SIZE_LIMIT, UPLOAD_TTL_MS, PREFIX, validateRequest, paths, readJob, writeJob, claimJob, authorizedJob, prepareJob };

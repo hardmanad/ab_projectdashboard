@@ -8,6 +8,7 @@ import {
   ProgressCircle
 } from '@adobe/react-spectrum';
 import { attach } from '@adobe/uix-guest';
+import { startContextDiagnostics } from '../utils/contextDiagnostics';
 import { extensionId } from './Constants';
 import { fetchProjectDetails, fetchStatuses } from '../services/workfrontApi';
 import ProjectDetails from './ProjectDetails';
@@ -29,9 +30,13 @@ const ProjectTab = () => {
 
   // Initialize UIX connection and get context
   useEffect(() => {
+    let disposed = false;
+    let stopDiagnostics = () => {};
     const init = async () => {
       try {
         const connection = await attach({ id: extensionId });
+        if (disposed) return;
+        stopDiagnostics = startContextDiagnostics(connection, 'project-tab');
         setGuestConnection(connection);
 
         // console.log('ProjectTab: UIX Connection established');
@@ -40,6 +45,7 @@ const ProjectTab = () => {
 
         // Wait a bit for context to be populated
         await new Promise(resolve => setTimeout(resolve, 500));
+        if (disposed) return;
 
         // Get project ID and hostname from context
         const context = connection.sharedContext;
@@ -67,11 +73,7 @@ const ProjectTab = () => {
         // console.log('ProjectTab: Token type:', tokenFromContext?.startsWith('eyJ') ? 'IMS (JWT)' : 'Other');
 
         if (!hostFromContext || !tokenFromContext || !projectIdFromContext) {
-          console.error('ProjectTab: Missing context data:');
-          console.error('  - hostname:', hostFromContext);
-          console.error('  - token:', !!tokenFromContext);
-          console.error('  - projectId:', projectIdFromContext);
-          console.error('ProjectTab: Available context keys:', Array.from(context._map.keys()));
+          console.error('ProjectTab: Missing required context fields. See context diagnostics for field names and types.');
           throw new Error('Missing required context data (hostname, token, or projectId)');
         }
 
@@ -90,13 +92,18 @@ const ProjectTab = () => {
           connection.host.renderDone();
         }
       } catch (err) {
-        console.error('Error initializing project tab:', err);
+        if (disposed) return;
+        console.error('Error initializing project tab.');
         setError('Failed to initialize: ' + err.message);
         setLoading(false);
       }
     };
 
     init();
+    return () => {
+      disposed = true;
+      stopDiagnostics();
+    };
   }, []);
 
   // Fetch project details and statuses map when context is ready
